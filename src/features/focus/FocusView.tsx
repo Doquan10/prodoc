@@ -6,7 +6,7 @@ import { formatSeconds, formatMinutes } from '../../utils/format'
 
 export default function FocusView() {
   const { active, logDistraction, abandon } = useSessionStore()
-  const getItem = useQueueStore(s => s.getItem)
+  const items = useQueueStore(s => s.items)
   const { setView, openPostSession } = useUIStore()
   const [elapsed, setElapsed] = useState(0)
 
@@ -33,7 +33,7 @@ export default function FocusView() {
     )
   }
 
-  const item = getItem(active.itemId)
+  const item = items.find(i => i.id === active.itemId)
   const totalSeconds = active.plannedMinutes * 60
   const remaining = totalSeconds - elapsed
   const isOvertime = remaining < 0

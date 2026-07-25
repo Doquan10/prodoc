@@ -2,7 +2,9 @@ import { useUIStore } from './store/useUIStore'
 import { useSessionStore } from './store/useSessionStore'
 import TodayView from './features/today/TodayView'
 import QueueView from './features/queue/QueueView'
+import PlanView from './features/plan/PlanView'
 import FocusView from './features/focus/FocusView'
+import PomodoroView from './features/pomodoro/PomodoroView'
 import PostSession from './features/focus/PostSession'
 import ReviewView from './features/review/ReviewView'
 import QuickCapture from './features/capture/QuickCapture'
@@ -11,7 +13,9 @@ import ItemDetail from './features/queue/ItemDetail'
 const NAV: { view: import('./types').View; label: string; icon: string }[] = [
   { view: 'today', label: 'Bugün',        icon: '☀' },
   { view: 'queue', label: 'Queue',         icon: '◈' },
+  { view: 'plan',  label: 'Takvim',        icon: '▦' },
   { view: 'focus', label: 'Odak',          icon: '●' },
+  { view: 'pomodoro', label: 'Pomodoro',   icon: '◔' },
   { view: 'review', label: 'Değerlendirme', icon: '◎' },
 ]
 
@@ -70,8 +74,12 @@ export default function App() {
             <TodayView />
           ) : view === 'queue' ? (
             <QueueView />
+          ) : view === 'plan' ? (
+            <PlanView />
           ) : view === 'focus' ? (
             <FocusView />
+          ) : view === 'pomodoro' ? (
+            <PomodoroView />
           ) : (
             <ReviewView />
           )}
@@ -80,7 +88,8 @@ export default function App() {
 
       {/* Global modals */}
       {showCapture && <QuickCapture />}
-      {selectedItemId && <ItemDetail itemId={selectedItemId} />}
+      {/* key: konu değişince taslak/not state'i sıfırlansın, öncekine sızmasın */}
+      {selectedItemId && <ItemDetail key={selectedItemId} itemId={selectedItemId} />}
     </div>
   )
 }

@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CuriosityItem, Difficulty, ItemStatus } from '../../types'
 import { useQueueStore } from '../../store/useQueueStore'
 import { useSessionStore } from '../../store/useSessionStore'
 import { usePlanStore } from '../../store/usePlanStore'
 import { useUIStore } from '../../store/useUIStore'
-import { difficultyLabel, formatMinutes, todayStr, formatDate } from '../../utils/format'
+import { difficultyLabel, formatMinutes, todayStr, formatDate, relativeDayLabel } from '../../utils/format'
 import QueueItem from './QueueItem'
 
 const DURATIONS = [10, 25, 45, 90]
@@ -26,6 +26,45 @@ export default function ItemDetail({ itemId }: Props) {
   const [draft, setDraft] = useState<Partial<CuriosityItem>>({})
   const [sessionMinutes, setSessionMinutes] = useState(item?.estimatedMinutes ?? 25)
   const [newChildQ, setNewChildQ] = useState('')
+  const [notes, setNotes] = useState(item?.notes ?? '')
+  const [notesSaved, setNotesSaved] = useState(true)
+  const [scheduleDate, setScheduleDate] = useState(item?.scheduledDate ?? todayStr())
+
+  const notesRef = useRef(notes)
+  const notesTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  /** Store'daki değerden farklıysa yazar. getState() ile okunur ki bayat kapanış olmasın. */
+  function commitNotes(value: string) {
+    if (value === (useQueueStore.getState().getItem(itemId)?.notes ?? '')) return
+    updateItem(itemId, { notes: value })
+  }
+
+  // Yazma durduktan 600ms sonra otomatik kayıt.
+  function handleNotesChange(value: string) {
+    setNotes(value)
+    setNotesSaved(false)
+    notesRef.current = value
+    clearTimeout(notesTimer.current)
+    notesTimer.current = setTimeout(() => {
+      commitNotes(value)
+      setNotesSaved(true)
+    }, 600)
+  }
+
+  function flushNotes() {
+    clearTimeout(notesTimer.current)
+    commitNotes(notesRef.current)
+    setNotesSaved(true)
+  }
+
+  // Bekleyen değişiklik varken modal kapanırsa kaybolmasın diye son değeri yaz.
+  useEffect(() => () => {
+    clearTimeout(notesTimer.current)
+    const latest = notesRef.current
+    if (latest !== (useQueueStore.getState().getItem(itemId)?.notes ?? '')) {
+      updateItem(itemId, { notes: latest })
+    }
+  }, [itemId, updateItem])
 
   if (!item) return null
 
@@ -48,7 +87,7 @@ export default function ItemDetail({ itemId }: Props) {
 
   function addChild() {
     if (!newChildQ.trim()) return
-    addItem(newChildQ, { parentId: itemId, category: item.category })
+    addItem(newChildQ, { parentId: itemId, category: item?.category })
     setNewChildQ('')
   }
 
@@ -153,13 +192,20 @@ export default function ItemDetail({ itemId }: Props) {
 
           {/* Schedule */}
           <div className="detail-section">
-            <span className="detail-label">Günlük Plana Ekle</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToLearn(todayStr(), itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: todayStr() }) }}>
-                📚 Bugün Öğren
+            <span className="detail-label">Plana Ekle · {relativeDayLabel(scheduleDate)}</span>
+            <div className="schedule-row">
+              <input
+                className="input select-sm"
+                type="date"
+                value={scheduleDate}
+                min={todayStr()}
+                onChange={e => setScheduleDate(e.target.value || todayStr())}
+              />
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToLearn(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
+                📚 Öğren
               </button>
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToExplore(todayStr(), itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: todayStr() }) }}>
-                🔭 Bugün Keşfet
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToExplore(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
+                🔭 Keşfet
               </button>
             </div>
           </div>
@@ -170,6 +216,24 @@ export default function ItemDetail({ itemId }: Props) {
               <button className="btn btn-primary" onClick={save}>Kaydet</button>
             </div>
           )}
+
+          {/* Kendi araştırma notları */}
+          <div className="detail-section">
+            <div className="notes-header">
+              <span className="detail-label">Araştırma Notlarım</span>
+              <span className={`notes-status ${notesSaved ? '' : 'pending'}`}>
+                {notesSaved ? (notes ? 'kaydedildi ✓' : '') : 'yazılıyor…'}
+              </span>
+            </div>
+            <textarea
+              className="input notes-textarea"
+              placeholder="Bu konuda öğrendiklerin, kaynaklar, kod parçaları, aklında kalan sorular..."
+              value={notes}
+              onChange={e => handleNotesChange(e.target.value)}
+              onBlur={flushNotes}
+              rows={8}
+            />
+          </div>
 
           {/* Research tree — children */}
           <div className="detail-section">

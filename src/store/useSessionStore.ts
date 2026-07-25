@@ -10,9 +10,27 @@ function loadHistory(): FocusSession[] {
   }
 }
 
-function saveHistory(sessions: FocusSession[]) {
-  // Keep last 200 sessions only
-  localStorage.setItem('plos_sessions', JSON.stringify(sessions.slice(0, 200)))
+const MAX_HISTORY = 200
+
+/** Son 200 seansı tutar — kesme hem bellekte hem diskte aynı olsun diye burada yapılır. */
+function pushHistory(history: FocusSession[], session: FocusSession): FocusSession[] {
+  const next = [session, ...history].slice(0, MAX_HISTORY)
+  localStorage.setItem('plos_sessions', JSON.stringify(next))
+  return next
+}
+
+function loadActive(): FocusSession | null {
+  try {
+    const v = localStorage.getItem('plos_active_session')
+    return v ? JSON.parse(v) : null
+  } catch {
+    return null
+  }
+}
+
+function saveActive(session: FocusSession | null) {
+  if (session) localStorage.setItem('plos_active_session', JSON.stringify(session))
+  else localStorage.removeItem('plos_active_session')
 }
 
 interface SessionStore {
@@ -25,7 +43,7 @@ interface SessionStore {
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
-  active: null,
+  active: loadActive(),
   history: loadHistory(),
 
   start(itemId, minutes) {
@@ -36,11 +54,17 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       startedAt: new Date().toISOString(),
       distractionCount: 0,
     }
+    saveActive(session)
     set({ active: session })
   },
 
   logDistraction() {
-    set(s => s.active ? { active: { ...s.active, distractionCount: s.active.distractionCount + 1 } } : s)
+    set(s => {
+      if (!s.active) return s
+      const active = { ...s.active, distractionCount: s.active.distractionCount + 1 }
+      saveActive(active)
+      return { active }
+    })
   },
 
   complete(outcome, note, newQuestions) {
@@ -51,9 +75,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       (new Date(endedAt).getTime() - new Date(active.startedAt).getTime()) / 60000
     )
     const completed: FocusSession = { ...active, endedAt, actualMinutes, outcome, learningNote: note, newQuestions }
-    const next = [completed, ...history]
-    saveHistory(next)
-    set({ active: null, history: next })
+    saveActive(null)
+    set({ active: null, history: pushHistory(history, completed) })
   },
 
   abandon() {
@@ -64,8 +87,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       (new Date(endedAt).getTime() - new Date(active.startedAt).getTime()) / 60000
     )
     const abandoned: FocusSession = { ...active, endedAt, actualMinutes, outcome: 'stuck' }
-    const next = [abandoned, ...history]
-    saveHistory(next)
-    set({ active: null, history: next })
+    saveActive(null)
+    set({ active: null, history: pushHistory(history, abandoned) })
   },
 }))

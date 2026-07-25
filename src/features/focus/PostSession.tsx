@@ -3,6 +3,7 @@ import type { SessionOutcome } from '../../types'
 import { useSessionStore } from '../../store/useSessionStore'
 import { useQueueStore } from '../../store/useQueueStore'
 import { useUIStore } from '../../store/useUIStore'
+import { todayStr } from '../../utils/format'
 
 const OUTCOMES: { value: SessionOutcome; label: string; desc: string; emoji: string }[] = [
   { value: 'learned', label: 'Anladım', desc: 'Konuyu açıklayabilirim', emoji: '✓' },
@@ -39,8 +40,8 @@ export default function PostSession() {
 
     // Update item status
     if (outcome === 'learned') {
-      updateItem(active.itemId, { status: 'learned', learnedAt: new Date().toISOString().split('T')[0] })
-    } else if (outcome === 'revisit' || outcome === 'stuck') {
+      updateItem(active.itemId, { status: 'learned', learnedAt: todayStr() })
+    } else if (outcome === 'stuck') {
       updateItem(active.itemId, { status: 'revisit' })
     } else {
       updateItem(active.itemId, { status: 'refined' })

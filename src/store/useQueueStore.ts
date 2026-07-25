@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { CuriosityItem, ItemStatus } from '../types'
 import { mockItems } from '../data/mockData'
+import { todayStr } from '../utils/format'
 
 function load(): CuriosityItem[] {
   try {
@@ -34,7 +35,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       question: question.trim(),
       status: 'inbox',
       priority: 3,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: todayStr(),
       ...opts,
     }
     set(s => {
@@ -55,7 +56,19 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
   deleteItem(id) {
     set(s => {
-      const next = s.items.filter(i => i.id !== id && i.parentId !== id)
+      // Alt ağacın tamamı silinmeli — yoksa torunlar köksüz kalıp queue'da öksüz görünür.
+      const doomed = new Set([id])
+      let grew = true
+      while (grew) {
+        grew = false
+        for (const i of s.items) {
+          if (i.parentId && doomed.has(i.parentId) && !doomed.has(i.id)) {
+            doomed.add(i.id)
+            grew = true
+          }
+        }
+      }
+      const next = s.items.filter(i => !doomed.has(i.id))
       save(next)
       return { items: next }
     })
@@ -63,7 +76,7 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
 
   setStatus(id, status) {
     const changes: Partial<CuriosityItem> = { status }
-    if (status === 'learned') changes.learnedAt = new Date().toISOString().split('T')[0]
+    if (status === 'learned') changes.learnedAt = todayStr()
     get().updateItem(id, changes)
   },
 

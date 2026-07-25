@@ -18,6 +18,7 @@ export interface CuriosityItem {
   estimatedMinutes?: number
   difficulty?: Difficulty
   priority: number // 1–5
+  notes?: string // kullanıcının kendi araştırma notları (serbest metin)
   scheduledDate?: string // YYYY-MM-DD
   parentId?: string
   createdAt: string
@@ -37,11 +38,19 @@ export interface FocusSession {
   distractionCount: number
 }
 
+export interface MustTask {
+  id: string
+  text: string
+  time?: string    // 'HH:MM' — ne zaman yapılacak
+  minutes?: number // tahmini süre
+  done?: boolean   // tamamlandı mı
+}
+
 export interface DailyPlan {
   date: string
   learnItemIds: string[]
   exploreItemIds: string[]
-  mustItems: string[]
+  mustItems: MustTask[]
 }
 
-export type View = 'today' | 'queue' | 'focus' | 'review'
+export type View = 'today' | 'queue' | 'plan' | 'focus' | 'pomodoro' | 'review'

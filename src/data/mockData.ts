@@ -1,7 +1,8 @@
 import type { CuriosityItem } from '../types'
+import { todayStr, toDateStr } from '../utils/format'
 
-const today = new Date().toISOString().split('T')[0]
-const ago = (d: number) => new Date(Date.now() - d * 86400000).toISOString().split('T')[0]
+const today = todayStr()
+const ago = (d: number) => toDateStr(new Date(Date.now() - d * 86400000))
 
 export const mockItems: CuriosityItem[] = [
   {
