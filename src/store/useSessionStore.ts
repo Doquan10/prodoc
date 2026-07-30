@@ -1,50 +1,37 @@
 import { create } from 'zustand'
 import type { FocusSession, SessionOutcome } from '../types'
+import * as api from '../api/plosApi'
 
-function loadHistory(): FocusSession[] {
-  try {
-    const v = localStorage.getItem('plos_sessions')
-    return v ? JSON.parse(v) : []
-  } catch {
-    return []
-  }
-}
-
-const MAX_HISTORY = 200
-
-/** Son 200 seansı tutar — kesme hem bellekte hem diskte aynı olsun diye burada yapılır. */
-function pushHistory(history: FocusSession[], session: FocusSession): FocusSession[] {
-  const next = [session, ...history].slice(0, MAX_HISTORY)
-  localStorage.setItem('plos_sessions', JSON.stringify(next))
-  return next
-}
-
-function loadActive(): FocusSession | null {
-  try {
-    const v = localStorage.getItem('plos_active_session')
-    return v ? JSON.parse(v) : null
-  } catch {
-    return null
-  }
-}
-
-function saveActive(session: FocusSession | null) {
-  if (session) localStorage.setItem('plos_active_session', JSON.stringify(session))
-  else localStorage.removeItem('plos_active_session')
+/** Bitmiş seansın gerçek süresini (duraklatmalar düşülmüş) hesaplar. */
+function closeSession(active: FocusSession, endedAt: string): { actualMinutes: number } {
+  const extraPausedMs = active.pausedAt
+    ? Date.now() - new Date(active.pausedAt).getTime()
+    : 0
+  const totalPaused = active.totalPausedMs + extraPausedMs
+  const actualMinutes = Math.round(
+    (new Date(endedAt).getTime() - new Date(active.startedAt).getTime() - totalPaused) / 60000
+  )
+  return { actualMinutes }
 }
 
 interface SessionStore {
   active: FocusSession | null
   history: FocusSession[]
+  hydrated: boolean
   start: (itemId: string, minutes: number) => void
+  pause: () => void
+  resume: () => void
   logDistraction: () => void
   complete: (outcome: SessionOutcome, note?: string, newQuestions?: string[]) => void
   abandon: () => void
 }
 
+// Optimistic: state anında güncellenir, aktif seansın her hali mock API'ye
+// PUT /api/sessions/active olarak upsert edilir.
 export const useSessionStore = create<SessionStore>((set, get) => ({
-  active: loadActive(),
-  history: loadHistory(),
+  active: null,
+  history: [],
+  hydrated: false,
 
   start(itemId, minutes) {
     const session: FocusSession = {
@@ -53,41 +40,80 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       plannedMinutes: minutes,
       startedAt: new Date().toISOString(),
       distractionCount: 0,
+      totalPausedMs: 0,
     }
-    saveActive(session)
     set({ active: session })
+    void api.saveActiveSession(session)
+  },
+
+  pause() {
+    const cur = get().active
+    if (!cur || cur.pausedAt) return
+    const active = { ...cur, pausedAt: new Date().toISOString() }
+    set({ active })
+    void api.saveActiveSession(active)
+  },
+
+  resume() {
+    const cur = get().active
+    if (!cur?.pausedAt) return
+    const pausedMs = Date.now() - new Date(cur.pausedAt).getTime()
+    const active = {
+      ...cur,
+      pausedAt: undefined,
+      totalPausedMs: cur.totalPausedMs + pausedMs,
+    }
+    set({ active })
+    void api.saveActiveSession(active)
   },
 
   logDistraction() {
-    set(s => {
-      if (!s.active) return s
-      const active = { ...s.active, distractionCount: s.active.distractionCount + 1 }
-      saveActive(active)
-      return { active }
-    })
+    const cur = get().active
+    if (!cur) return
+    const active = { ...cur, distractionCount: cur.distractionCount + 1 }
+    set({ active })
+    void api.saveActiveSession(active)
   },
 
   complete(outcome, note, newQuestions) {
     const { active, history } = get()
     if (!active) return
     const endedAt = new Date().toISOString()
-    const actualMinutes = Math.round(
-      (new Date(endedAt).getTime() - new Date(active.startedAt).getTime()) / 60000
-    )
-    const completed: FocusSession = { ...active, endedAt, actualMinutes, outcome, learningNote: note, newQuestions }
-    saveActive(null)
-    set({ active: null, history: pushHistory(history, completed) })
+    const completed: FocusSession = {
+      ...active,
+      endedAt,
+      ...closeSession(active, endedAt),
+      outcome,
+      learningNote: note,
+      newQuestions,
+      pausedAt: undefined,
+    }
+    // Geçmiş limiti sunucu kuralıyla aynı — bellek ve API senkron kalsın
+    set({ active: null, history: [completed, ...history].slice(0, api.SESSION_HISTORY_LIMIT) })
+    void api.finishSession(completed)
   },
 
   abandon() {
     const { active, history } = get()
     if (!active) return
     const endedAt = new Date().toISOString()
-    const actualMinutes = Math.round(
-      (new Date(endedAt).getTime() - new Date(active.startedAt).getTime()) / 60000
-    )
-    const abandoned: FocusSession = { ...active, endedAt, actualMinutes, outcome: 'stuck' }
-    saveActive(null)
-    set({ active: null, history: pushHistory(history, abandoned) })
+    const abandoned: FocusSession = {
+      ...active,
+      endedAt,
+      ...closeSession(active, endedAt),
+      outcome: 'stuck',
+      pausedAt: undefined,
+    }
+    set({ active: null, history: [abandoned, ...history].slice(0, api.SESSION_HISTORY_LIMIT) })
+    void api.finishSession(abandoned)
   },
 }))
+
+// Açılışta geçmiş + aktif seans sunucudan yüklenir
+void Promise.all([api.fetchSessions(), api.fetchActiveSession()]).then(([hist, act]) => {
+  useSessionStore.setState({
+    history: hist.success ? hist.data : [],
+    active: act.success ? act.data : null,
+    hydrated: true,
+  })
+})

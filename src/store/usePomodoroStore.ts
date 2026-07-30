@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { dayOf } from '../utils/format'
+import * as api from '../api/plosApi'
 
 export type Phase = 'work' | 'short' | 'long'
 
@@ -23,7 +24,8 @@ export interface PomodoroLog {
 const DEFAULT_CONFIG: PomodoroConfig = { work: 25, short: 5, long: 15, longEvery: 4 }
 const LOG_CAP = 1000
 
-interface Persisted {
+/** API'ye bütün olarak upsert edilen pomodoro durumu (PUT /api/pomodoro). */
+export interface PomodoroState {
   config: PomodoroConfig
   autoStart: boolean
   phase: Phase
@@ -35,8 +37,8 @@ interface Persisted {
   log: PomodoroLog[]
 }
 
-function loadPersisted(): Persisted {
-  const base: Persisted = {
+function baseState(): PomodoroState {
+  return {
     config: DEFAULT_CONFIG,
     autoStart: false,
     phase: 'work',
@@ -47,23 +49,14 @@ function loadPersisted(): Persisted {
     note: '',
     log: [],
   }
-  try {
-    const v = localStorage.getItem('plos_pomodoro')
-    if (!v) return base
-    const p = { ...base, ...JSON.parse(v) } as Persisted
-    p.config = { ...DEFAULT_CONFIG, ...p.config }
-    if (!Array.isArray(p.log)) p.log = []
-    return p
-  } catch {
-    return base
-  }
 }
 
 function phaseSeconds(config: PomodoroConfig, phase: Phase): number {
   return (phase === 'work' ? config.work : phase === 'short' ? config.short : config.long) * 60
 }
 
-interface PomodoroStore extends Persisted {
+interface PomodoroStore extends PomodoroState {
+  hydrated: boolean
   start: () => void
   pause: () => void
   reset: () => void
@@ -75,15 +68,16 @@ interface PomodoroStore extends Persisted {
 }
 
 export const usePomodoroStore = create<PomodoroStore>((set, get) => {
-  function persist(next: Partial<Persisted>) {
+  // Optimistic: state anında güncellenir, tam durum mock API'ye upsert edilir
+  function persist(next: Partial<PomodoroState>) {
     const s = get()
-    const snap: Persisted = {
+    const snap: PomodoroState = {
       config: s.config, autoStart: s.autoStart, phase: s.phase, running: s.running,
       endsAt: s.endsAt, remainingSec: s.remainingSec, round: s.round, note: s.note, log: s.log,
       ...next,
     }
-    localStorage.setItem('plos_pomodoro', JSON.stringify(snap))
     set(next)
+    void api.savePomodoro(snap)
   }
 
   /** Fazı bitir ve ilerle. logIt=true ise geçmişe kaydeder (ve çalışmayı sayar). */
@@ -132,7 +126,8 @@ export const usePomodoroStore = create<PomodoroStore>((set, get) => {
   }
 
   return {
-    ...loadPersisted(),
+    ...baseState(),
+    hydrated: false,
 
     start() {
       const s = get()
@@ -165,5 +160,20 @@ export const usePomodoroStore = create<PomodoroStore>((set, get) => {
 
     setAutoStart(v) { persist({ autoStart: v }) },
     setNote(v) { persist({ note: v }) },
+  }
+})
+
+// Açılışta sunucudan yükle — eksik alanlar varsayılanlarla tamamlanır
+void api.fetchPomodoro().then(res => {
+  const p = res.success ? res.data : null
+  if (p) {
+    usePomodoroStore.setState({
+      ...p,
+      config: { ...DEFAULT_CONFIG, ...p.config },
+      log: Array.isArray(p.log) ? p.log : [],
+      hydrated: true,
+    })
+  } else {
+    usePomodoroStore.setState({ hydrated: true })
   }
 })

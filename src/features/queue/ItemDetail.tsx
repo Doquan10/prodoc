@@ -1,29 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CuriosityItem, Difficulty, ItemStatus } from '../../types'
+import type { Difficulty, ItemStatus } from '../../types'
 import { useQueueStore } from '../../store/useQueueStore'
 import { useSessionStore } from '../../store/useSessionStore'
 import { usePlanStore } from '../../store/usePlanStore'
 import { useUIStore } from '../../store/useUIStore'
-import { difficultyLabel, formatMinutes, todayStr, formatDate, relativeDayLabel } from '../../utils/format'
+import { useWritingStore } from '../../store/useWritingStore'
+import { difficultyLabel, formatMinutes, todayStr, formatDate, relativeDayLabel, dayOf } from '../../utils/format'
 import QueueItem from './QueueItem'
 
 const DURATIONS = [10, 25, 45, 90]
 const DIFFICULTIES: Difficulty[] = ['light', 'medium', 'deep']
-const CATEGORIES = ['Yazılım', 'Veritabanı', 'Ağ', 'Donanım', 'Dağıtık Sistemler', 'Fizik', 'Mühendislik', 'Matematik', 'Diğer']
+const SUGGESTED_TAGS = ['Yazılım', 'Veritabanı', 'Ağ', 'Donanım', 'Dağıtık Sistemler', 'Fizik', 'Mühendislik', 'Matematik', 'OOP', 'Algoritmalar', 'Diğer']
 
 interface Props {
   itemId: string
 }
 
 export default function ItemDetail({ itemId }: Props) {
-  const { selectItem, setView, closePostSession } = useUIStore()
+  const { selectItem, setView, closePostSession, openWriting } = useUIStore()
   const { getItem, updateItem, deleteItem, getChildren, addItem } = useQueueStore()
   const startSession = useSessionStore(s => s.start)
-  const { addToLearn, addToExplore } = usePlanStore()
+  const { addToPlan } = usePlanStore()
+  const allWritings = useWritingStore(s => s.writings)
+  const addWriting = useWritingStore(s => s.addWriting)
+  const categoryOptions = useWritingStore(s => s.categoryOptions)
 
   const item = getItem(itemId)
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState<Partial<CuriosityItem>>({})
+  const [draftQuestion, setDraftQuestion] = useState(item?.question ?? '')
+  const [tagInput, setTagInput] = useState('')
   const [sessionMinutes, setSessionMinutes] = useState(item?.estimatedMinutes ?? 25)
   const [newChildQ, setNewChildQ] = useState('')
   const [notes, setNotes] = useState(item?.notes ?? '')
@@ -33,13 +38,11 @@ export default function ItemDetail({ itemId }: Props) {
   const notesRef = useRef(notes)
   const notesTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
-  /** Store'daki değerden farklıysa yazar. getState() ile okunur ki bayat kapanış olmasın. */
   function commitNotes(value: string) {
     if (value === (useQueueStore.getState().getItem(itemId)?.notes ?? '')) return
     updateItem(itemId, { notes: value })
   }
 
-  // Yazma durduktan 600ms sonra otomatik kayıt.
   function handleNotesChange(value: string) {
     setNotes(value)
     setNotesSaved(false)
@@ -57,7 +60,6 @@ export default function ItemDetail({ itemId }: Props) {
     setNotesSaved(true)
   }
 
-  // Bekleyen değişiklik varken modal kapanırsa kaybolmasın diye son değeri yaz.
   useEffect(() => () => {
     clearTimeout(notesTimer.current)
     const latest = notesRef.current
@@ -70,12 +72,29 @@ export default function ItemDetail({ itemId }: Props) {
 
   const children = getChildren(itemId)
   const parent = item.parentId ? getItem(item.parentId) : undefined
-  const merged = { ...item, ...draft }
+  const writings = allWritings.filter(w => w.itemId === itemId)
+  const categories = categoryOptions()
 
-  function save() {
-    updateItem(itemId, draft)
-    setDraft({})
+  function goToWriting(id: string) {
+    flushNotes()
+    selectItem(null)
+    openWriting(id)
+  }
+
+  function saveQuestion() {
+    if (!draftQuestion.trim()) return
+    updateItem(itemId, { question: draftQuestion })
     setEditing(false)
+  }
+
+  function cancelEdit() {
+    setDraftQuestion(item?.question ?? '')
+    setEditing(false)
+  }
+
+  function setDuration(d: number) {
+    setSessionMinutes(d)
+    updateItem(itemId, { estimatedMinutes: d })
   }
 
   function startFocus() {
@@ -87,7 +106,7 @@ export default function ItemDetail({ itemId }: Props) {
 
   function addChild() {
     if (!newChildQ.trim()) return
-    addItem(newChildQ, { parentId: itemId, category: item?.category })
+    addItem(newChildQ, { parentId: itemId, tags: item?.tags ?? [] })
     setNewChildQ('')
   }
 
@@ -123,33 +142,40 @@ export default function ItemDetail({ itemId }: Props) {
         <div className="item-detail-body">
           {/* Question */}
           {editing ? (
-            <textarea
-              className="input item-detail-question-edit"
-              value={(draft.question ?? item.question)}
-              onChange={e => setDraft(d => ({ ...d, question: e.target.value }))}
-              rows={3}
-              autoFocus
-            />
+            <>
+              <textarea
+                className="input item-detail-question-edit"
+                value={draftQuestion}
+                onChange={e => setDraftQuestion(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveQuestion() }}
+                rows={3}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button className="btn btn-ghost" onClick={cancelEdit}>İptal</button>
+                <button className="btn btn-primary" onClick={saveQuestion}>Kaydet</button>
+              </div>
+            </>
           ) : (
-            <h2 className="item-detail-question" onDoubleClick={() => setEditing(true)}>
+            <h2 className="item-detail-question" onDoubleClick={() => { setDraftQuestion(item.question); setEditing(true) }}>
               {item.question}
             </h2>
           )}
 
-          {/* Meta row */}
+          {/* Meta row — her değişiklik anında kaydedilir */}
           <div className="detail-meta-row">
             <select
               className="select-sm"
-              value={merged.status}
-              onChange={e => { updateItem(itemId, { status: e.target.value as ItemStatus }); setDraft(d => ({ ...d, status: e.target.value as ItemStatus })) }}
+              value={item.status}
+              onChange={e => updateItem(itemId, { status: e.target.value as ItemStatus })}
             >
               {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
 
             <select
               className="select-sm"
-              value={merged.difficulty ?? ''}
-              onChange={e => setDraft(d => ({ ...d, difficulty: e.target.value as Difficulty || undefined }))}
+              value={item.difficulty ?? ''}
+              onChange={e => updateItem(itemId, { difficulty: e.target.value as Difficulty || undefined })}
             >
               <option value="">Zorluk</option>
               {DIFFICULTIES.map(d => <option key={d} value={d}>{difficultyLabel(d)}</option>)}
@@ -157,21 +183,65 @@ export default function ItemDetail({ itemId }: Props) {
 
             <select
               className="select-sm"
-              value={merged.category ?? ''}
-              onChange={e => setDraft(d => ({ ...d, category: e.target.value || undefined }))}
-            >
-              <option value="">Kategori</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-
-            <select
-              className="select-sm"
-              value={merged.estimatedMinutes ?? ''}
-              onChange={e => setDraft(d => ({ ...d, estimatedMinutes: e.target.value ? parseInt(e.target.value) : undefined }))}
+              value={item.estimatedMinutes ?? ''}
+              onChange={e => {
+                const mins = e.target.value ? parseInt(e.target.value) : undefined
+                updateItem(itemId, { estimatedMinutes: mins })
+                setSessionMinutes(mins ?? 25)
+              }}
             >
               <option value="">Süre</option>
               {DURATIONS.map(d => <option key={d} value={d}>{formatMinutes(d)}</option>)}
             </select>
+          </div>
+
+          {/* Kategori — bilgi ağacındaki yeri */}
+          <div className="detail-section">
+            <span className="detail-label">Kategori</span>
+            <select
+              className="select-sm"
+              style={{ width: '100%' }}
+              value={item.categoryId ?? ''}
+              onChange={e => updateItem(itemId, { categoryId: e.target.value || undefined })}
+            >
+              <option value="">{categories.length ? 'Kategorisiz' : 'Henüz kategori yok — Yazılarım’dan oluştur'}</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}
+            </select>
+          </div>
+
+          {/* Tags */}
+          <div className="detail-section">
+            <span className="detail-label">Etiketler</span>
+            <div className="tag-editor">
+              {item.tags.map(t => (
+                <span key={t} className="tag-chip active">
+                  {t}
+                  <button
+                    className="tag-chip-remove"
+                    onClick={() => updateItem(itemId, { tags: item.tags.filter(x => x !== t) })}
+                  >×</button>
+                </span>
+              ))}
+              <input
+                className="tag-input"
+                placeholder="Etiket ekle…"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && tagInput.trim()) {
+                    const t = tagInput.trim()
+                    if (!item.tags.includes(t)) updateItem(itemId, { tags: [...item.tags, t] })
+                    setTagInput('')
+                  }
+                }}
+                list={`tag-suggestions-${itemId}`}
+              />
+              <datalist id={`tag-suggestions-${itemId}`}>
+                {SUGGESTED_TAGS.filter(t => !item.tags.includes(t)).map(t => (
+                  <option key={t} value={t} />
+                ))}
+              </datalist>
+            </div>
           </div>
 
           {/* Priority */}
@@ -181,8 +251,8 @@ export default function ItemDetail({ itemId }: Props) {
               {[1, 2, 3, 4, 5].map(p => (
                 <button
                   key={p}
-                  className={`priority-btn ${(merged.priority ?? 3) >= p ? 'active' : ''}`}
-                  onClick={() => { updateItem(itemId, { priority: p }); setDraft(d => ({ ...d, priority: p })) }}
+                  className={`priority-btn ${(item.priority ?? 3) >= p ? 'active' : ''}`}
+                  onClick={() => updateItem(itemId, { priority: p })}
                 >
                   ★
                 </button>
@@ -201,23 +271,13 @@ export default function ItemDetail({ itemId }: Props) {
                 min={todayStr()}
                 onChange={e => setScheduleDate(e.target.value || todayStr())}
               />
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToLearn(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
-                📚 Öğren
-              </button>
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToExplore(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
-                🔭 Keşfet
+              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToPlan(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
+                + Plana Ekle
               </button>
             </div>
           </div>
 
-          {editing && (
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-ghost" onClick={() => { setDraft({}); setEditing(false) }}>İptal</button>
-              <button className="btn btn-primary" onClick={save}>Kaydet</button>
-            </div>
-          )}
-
-          {/* Kendi araştırma notları */}
+          {/* Araştırma notları */}
           <div className="detail-section">
             <div className="notes-header">
               <span className="detail-label">Araştırma Notlarım</span>
@@ -227,32 +287,61 @@ export default function ItemDetail({ itemId }: Props) {
             </div>
             <textarea
               className="input notes-textarea"
-              placeholder="Bu konuda öğrendiklerin, kaynaklar, kod parçaları, aklında kalan sorular..."
+              placeholder="Öğrendiklerin, kaynaklar, kod parçaları..."
               value={notes}
               onChange={e => handleNotesChange(e.target.value)}
               onBlur={flushNotes}
-              rows={8}
+              rows={6}
             />
           </div>
 
-          {/* Research tree — children */}
+          {/* Blog yazıları */}
           <div className="detail-section">
-            <span className="detail-label">Alt Sorular ({children.length})</span>
-            {children.map(c => <QueueItem key={c.id} item={c} showStatus={false} />)}
-            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <div className="notes-header">
+              <span className="detail-label">Yazılarım {writings.length > 0 && `(${writings.length})`}</span>
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: 12, padding: '2px 10px' }}
+                onClick={() => goToWriting(addWriting({ itemId, title: item.question }))}
+              >
+                + Yazı Yaz
+              </button>
+            </div>
+            {writings.length > 0 && (
+              <div className="detail-writing-list">
+                {writings.map(w => (
+                  <button key={w.id} className="detail-writing-row" onClick={() => goToWriting(w.id)}>
+                    <span className="detail-writing-title">✎ {w.title.trim() || 'Başlıksız'}</span>
+                    <span className="detail-writing-date">{formatDate(dayOf(w.updatedAt))}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Aklıma gelen sorular */}
+          <div className="detail-section">
+            <div className="notes-header">
+              <span className="detail-label">Aklıma Gelen Sorular {children.length > 0 && `(${children.length})`}</span>
+              <span className="notes-status">Enter ile ekle</span>
+            </div>
+            <div className="child-input-row">
               <input
                 className="input"
-                style={{ flex: 1 }}
-                placeholder="Bu konudan doğan yeni soru..."
+                placeholder="Bu konuyu araştırırken merak ettiklerim..."
                 value={newChildQ}
                 onChange={e => setNewChildQ(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addChild()}
               />
-              <button className="btn btn-ghost" onClick={addChild}>Ekle</button>
+              <button className="btn btn-ghost" onClick={addChild} disabled={!newChildQ.trim()}>+</button>
             </div>
+            {children.length > 0 && (
+              <div className="child-list">
+                {children.map(c => <QueueItem key={c.id} item={c} showStatus={false} />)}
+              </div>
+            )}
           </div>
 
-          {/* Scheduled date display */}
           {item.scheduledDate && (
             <p className="detail-meta-note">📅 {formatDate(item.scheduledDate)} için planlandı</p>
           )}
@@ -269,7 +358,7 @@ export default function ItemDetail({ itemId }: Props) {
                 <button
                   key={d}
                   className={`duration-btn ${sessionMinutes === d ? 'active' : ''}`}
-                  onClick={() => setSessionMinutes(d)}
+                  onClick={() => setDuration(d)}
                 >
                   {formatMinutes(d)}
                 </button>

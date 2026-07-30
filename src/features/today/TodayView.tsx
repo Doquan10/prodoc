@@ -47,7 +47,7 @@ export default function TodayView() {
   const getItem = useQueueStore(s => s.getItem)
   const updateItem = useQueueStore(s => s.updateItem)
   const { active: activeSession, start: startSession } = useSessionStore()
-  const { todayPlan, addMust, removeMust, toggleMust } = usePlanStore()
+  const { todayPlan, addMust, removeMust, toggleMust, addToPlan } = usePlanStore()
   const { setView, selectItem, openCapture } = useUIStore()
   const focusGoal = useSettingsStore(s => s.focusGoalMinutes)
   const setFocusGoal = useSettingsStore(s => s.setFocusGoal)
@@ -59,6 +59,8 @@ export default function TodayView() {
   const [mustHour, setMustHour] = useState('') // '' = saat yok, yoksa '00'..'23'
   const [mustMin, setMustMin] = useState('00')
   const [mustMinutes, setMustMinutes] = useState('')
+  const [showQuickTask, setShowQuickTask] = useState(false)
+  const [quickTaskText, setQuickTaskText] = useState('')
 
   const today = todayStr()
   const plan = todayPlan()
@@ -99,6 +101,14 @@ export default function TodayView() {
     setMustMinutes('')
   }
 
+  function submitQuickTask(e?: React.KeyboardEvent) {
+    if (e && e.key !== 'Enter') return
+    if (!quickTaskText.trim()) { setShowQuickTask(false); return }
+    addMust(today, { text: quickTaskText.trim() })
+    setQuickTaskText('')
+    setShowQuickTask(false)
+  }
+
   // Ajanda: tamamlanmamışlar üstte (saatliler saate göre, saatsizler sonra),
   // tamamlananlar en altta.
   const orderedMust = [...plan.mustItems].sort((a, b) => {
@@ -116,8 +126,7 @@ export default function TodayView() {
   // Sıradaki: şu andan sonraki ilk tamamlanmamış saatli görev.
   const nextTask = orderedMust.find(t => !t.done && t.time && t.time >= nowHM)
 
-  const learnItems = plan.learnItemIds.map(id => getItem(id)).filter(Boolean) as CuriosityItem[]
-  const exploreItems = plan.exploreItemIds.map(id => getItem(id)).filter(Boolean) as CuriosityItem[]
+  const planItems = plan.itemIds.map(id => getItem(id)).filter(Boolean) as CuriosityItem[]
 
   return (
     <div className="view-container">
@@ -127,8 +136,27 @@ export default function TodayView() {
           <h1 className="view-title">{greeting(now.getHours())}</h1>
           <p className="view-subtitle">{dateLabel}</p>
         </div>
-        <button className="btn btn-primary" onClick={openCapture}>+ Merak Et</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <button className="btn btn-ghost" onClick={() => setShowQuickTask(v => !v)}>+ Bugüne Ekle</button>
+          <button className="btn btn-primary" onClick={openCapture}>+ Merak Et</button>
+        </div>
       </div>
+
+      {showQuickTask && (
+        <div className="quick-task-bar">
+          <input
+            className="input"
+            placeholder="Görev ekle (ör. markete git)… Enter ile kaydet"
+            value={quickTaskText}
+            onChange={e => setQuickTaskText(e.target.value)}
+            onKeyDown={submitQuickTask}
+            onBlur={() => { if (!quickTaskText.trim()) setShowQuickTask(false) }}
+            autoFocus
+          />
+          <button className="btn btn-primary" onClick={() => submitQuickTask()} disabled={!quickTaskText.trim()}>Ekle</button>
+          <button className="btn btn-ghost" onClick={() => { setQuickTaskText(''); setShowQuickTask(false) }}>İptal</button>
+        </div>
+      )}
 
       {/* Özet şeridi */}
       <div className="today-summary">
@@ -199,7 +227,7 @@ export default function TodayView() {
           <div className="suggestion-card">
             <p className="suggestion-question">{suggestion.question}</p>
             <div className="suggestion-meta">
-              {suggestion.category && <span className="badge badge-category">{suggestion.category}</span>}
+              {suggestion.tags.map(t => <span key={t} className="badge badge-category">{t}</span>)}
               {suggestion.estimatedMinutes && <span className="badge badge-time">{formatMinutes(suggestion.estimatedMinutes)}</span>}
             </div>
             <div className="suggestion-actions">
@@ -209,6 +237,17 @@ export default function TodayView() {
                   Başka öner
                 </button>
               )}
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  addToPlan(today, suggestion.id)
+                  updateItem(suggestion.id, { status: 'scheduled', scheduledDate: today })
+                  setShowSuggestion(false)
+                  setSuggestionIdx(0)
+                }}
+              >
+                + Plana Ekle
+              </button>
               <button className="btn btn-primary" onClick={startSuggestion}>▶ Başla</button>
             </div>
           </div>
@@ -217,28 +256,11 @@ export default function TodayView() {
         )}
       </div>
 
-      {/* Today's LEARN plan */}
-      {learnItems.length > 0 && (
+      {/* Bugünkü plan */}
+      {planItems.length > 0 && (
         <div className="today-section">
-          <span className="today-section-label">📚 BUGÜN ÖĞREN</span>
-          {learnItems.map(item => (
-            <div key={item.id} className="plan-item-row">
-              <div style={{ flex: 1 }} onClick={() => selectItem(item.id)}>
-                <QueueItem item={item} showStatus={false} />
-              </div>
-              {item.status !== 'learned' && (
-                <button className="btn btn-ghost play-btn" onClick={() => startItem(item)}>▶</button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Today's EXPLORE plan */}
-      {exploreItems.length > 0 && (
-        <div className="today-section">
-          <span className="today-section-label">🔭 BUGÜN KEŞFET</span>
-          {exploreItems.map(item => (
+          <span className="today-section-label">📚 BUGÜNKÜ PLAN</span>
+          {planItems.map(item => (
             <div key={item.id} className="plan-item-row">
               <div style={{ flex: 1 }} onClick={() => selectItem(item.id)}>
                 <QueueItem item={item} showStatus={false} />

@@ -81,8 +81,10 @@ export default function ReviewView() {
   const categoryMinutes: Record<string, number> = {}
   cur.sessions.forEach(s => {
     const item = items.find(i => i.id === s.itemId)
-    const cat = item?.category ?? 'Diğer'
-    categoryMinutes[cat] = (categoryMinutes[cat] ?? 0) + (s.actualMinutes ?? 0)
+    const tags = item?.tags.length ? item.tags : ['Diğer']
+    tags.forEach(t => {
+      categoryMinutes[t] = (categoryMinutes[t] ?? 0) + (s.actualMinutes ?? 0)
+    })
   })
   const categoryList = Object.entries(categoryMinutes).sort((a, b) => b[1] - a[1])
   const maxCatMin = categoryList[0]?.[1] ?? 1

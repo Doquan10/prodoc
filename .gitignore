@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# PLOS mock backend verisi (kişisel veri, repoya girmez)
+mock/data/
+mock/db.json*

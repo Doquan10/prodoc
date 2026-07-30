@@ -1,23 +1,12 @@
 import { create } from 'zustand'
 import type { CuriosityItem, ItemStatus } from '../types'
-import { mockItems } from '../data/mockData'
 import { todayStr } from '../utils/format'
-
-function load(): CuriosityItem[] {
-  try {
-    const v = localStorage.getItem('plos_queue')
-    return v ? JSON.parse(v) : mockItems
-  } catch {
-    return mockItems
-  }
-}
-
-function save(items: CuriosityItem[]) {
-  localStorage.setItem('plos_queue', JSON.stringify(items))
-}
+import { collectSubtree } from '../utils/tree'
+import * as api from '../api/plosApi'
 
 interface QueueStore {
   items: CuriosityItem[]
+  hydrated: boolean
   addItem: (question: string, opts?: Partial<Omit<CuriosityItem, 'id' | 'createdAt' | 'question'>>) => string
   updateItem: (id: string, changes: Partial<CuriosityItem>) => void
   deleteItem: (id: string) => void
@@ -26,8 +15,11 @@ interface QueueStore {
   getChildren: (parentId: string) => CuriosityItem[]
 }
 
+// Aksiyonlar optimistic çalışır: state anında güncellenir, mock API arka planda
+// persist eder. id'ler client GUID'i olduğu için POST yanıtı beklenmez.
 export const useQueueStore = create<QueueStore>((set, get) => ({
-  items: load(),
+  items: [],
+  hydrated: false,
 
   addItem(question, opts = {}) {
     const item: CuriosityItem = {
@@ -36,42 +28,26 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
       status: 'inbox',
       priority: 3,
       createdAt: todayStr(),
+      tags: [],
       ...opts,
     }
-    set(s => {
-      const next = [item, ...s.items]
-      save(next)
-      return { items: next }
-    })
+    set(s => ({ items: [item, ...s.items] }))
+    void api.createItem(item)
     return item.id
   },
 
   updateItem(id, changes) {
-    set(s => {
-      const next = s.items.map(i => (i.id === id ? { ...i, ...changes } : i))
-      save(next)
-      return { items: next }
-    })
+    set(s => ({ items: s.items.map(i => (i.id === id ? { ...i, ...changes } : i)) }))
+    void api.updateItem(id, changes)
   },
 
   deleteItem(id) {
+    // Optimistic cascade — sunucu (mock API) da aynı kuralı uygular
     set(s => {
-      // Alt ağacın tamamı silinmeli — yoksa torunlar köksüz kalıp queue'da öksüz görünür.
-      const doomed = new Set([id])
-      let grew = true
-      while (grew) {
-        grew = false
-        for (const i of s.items) {
-          if (i.parentId && doomed.has(i.parentId) && !doomed.has(i.id)) {
-            doomed.add(i.id)
-            grew = true
-          }
-        }
-      }
-      const next = s.items.filter(i => !doomed.has(i.id))
-      save(next)
-      return { items: next }
+      const doomed = collectSubtree(id, s.items)
+      return { items: s.items.filter(i => !doomed.has(i.id)) }
     })
+    void api.deleteItem(id)
   },
 
   setStatus(id, status) {
@@ -88,3 +64,8 @@ export const useQueueStore = create<QueueStore>((set, get) => ({
     return get().items.filter(i => i.parentId === parentId)
   },
 }))
+
+// Açılışta sunucudan yükle — App, tüm store'lar hydrate olana dek yükleme ekranı gösterir
+void api.fetchItems().then(res => {
+  useQueueStore.setState({ items: res.success ? res.data : [], hydrated: true })
+})

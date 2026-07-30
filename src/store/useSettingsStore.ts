@@ -1,26 +1,26 @@
 import { create } from 'zustand'
+import type { AppSettings } from '../types'
+import * as api from '../api/plosApi'
 
-interface Settings {
-  focusGoalMinutes: number
-}
-
-function load(): Settings {
-  try {
-    const v = localStorage.getItem('plos_settings')
-    if (v) return { focusGoalMinutes: 60, ...JSON.parse(v) }
-  } catch { /* ignore */ }
-  return { focusGoalMinutes: 60 }
-}
-
-interface SettingsStore extends Settings {
+interface SettingsStore extends AppSettings {
+  hydrated: boolean
   setFocusGoal: (minutes: number) => void
 }
 
 export const useSettingsStore = create<SettingsStore>(set => ({
-  ...load(),
+  focusGoalMinutes: 60,
+  hydrated: false,
 
   setFocusGoal(minutes) {
-    localStorage.setItem('plos_settings', JSON.stringify({ focusGoalMinutes: minutes }))
     set({ focusGoalMinutes: minutes })
+    void api.saveSettings({ focusGoalMinutes: minutes })
   },
 }))
+
+// Açılışta sunucudan yükle — hiç kayıt yoksa varsayılanlar geçerli kalır
+void api.fetchSettings().then(res => {
+  useSettingsStore.setState({
+    ...(res.success && res.data ? res.data : {}),
+    hydrated: true,
+  })
+})

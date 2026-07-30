@@ -1,6 +1,7 @@
 import type { CuriosityItem } from '../../types'
 import { difficultyLabel, formatMinutes } from '../../utils/format'
 import { useUIStore } from '../../store/useUIStore'
+import { useWritingStore } from '../../store/useWritingStore'
 
 const DIFF_CLASS: Record<string, string> = {
   light: 'badge-light',
@@ -33,13 +34,17 @@ interface Props {
 
 export default function QueueItem({ item, showStatus = true }: Props) {
   const selectItem = useUIStore(s => s.selectItem)
+  const category = useWritingStore(s => (item.categoryId ? s.getWriting(item.categoryId) : undefined))
 
   return (
     <div className="queue-item" onClick={() => selectItem(item.id)}>
       <div className="queue-item-main">
         <p className="queue-item-question">{item.question}</p>
         <div className="queue-item-meta">
-          {item.category && <span className="badge badge-category">{item.category}</span>}
+          {category && (
+            <span className="badge badge-folder">▸ {category.title.trim() || 'Başlıksız'}</span>
+          )}
+          {item.tags.map(t => <span key={t} className="badge badge-category">{t}</span>)}
           {item.difficulty && (
             <span className={`badge ${DIFF_CLASS[item.difficulty]}`}>
               {difficultyLabel(item.difficulty)}

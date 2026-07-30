@@ -35,7 +35,7 @@ export default function PostSession() {
 
     // Add child questions to queue
     newQuestions.forEach(q => {
-      addItem(q, { parentId: active.itemId, category: item?.category })
+      addItem(q, { parentId: active.itemId, tags: item?.tags ?? [] })
     })
 
     // Update item status
