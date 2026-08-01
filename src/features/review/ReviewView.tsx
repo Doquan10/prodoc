@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { useSessionStore } from '../../store/useSessionStore'
 import { useQueueStore } from '../../store/useQueueStore'
 import { formatMinutes, addDays, dayOf, todayStr } from '../../utils/format'
@@ -13,6 +13,9 @@ const PERIODS: { value: Period; label: string; days: number; vsLabel: string }[]
 ]
 
 const WEEKDAY_MINI = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
+
+/** Kategori çubukları için ayırt edici renk paleti (koyu temaya uygun). */
+const CAT_COLORS = ['#4d78f5', '#2ea043', '#d29922', '#a371f7', '#f778ba', '#3fb0d0', '#e5534b']
 
 /** `count` günlük pencere. shift=0 güncel dönem, shift=1 bir önceki eşdeğer dönem. */
 function windowDays(count: number, shift: number): string[] {
@@ -88,6 +91,7 @@ export default function ReviewView() {
   })
   const categoryList = Object.entries(categoryMinutes).sort((a, b) => b[1] - a[1])
   const maxCatMin = categoryList[0]?.[1] ?? 1
+  const catTotal = categoryList.reduce((a, [, m]) => a + m, 0)
 
   // Öğrenme notları (seçili dönem)
   const learnedNotes = cur.sessions
@@ -210,17 +214,29 @@ export default function ReviewView() {
       {/* Kategori dağılımı */}
       {categoryList.length > 0 && (
         <div className="review-section">
-          <span className="review-section-title">Kategori Dağılımı</span>
+          <div className="review-section-header">
+            <span className="review-section-title">Kategori Dağılımı</span>
+            <span className="review-tally">{categoryList.length} kategori · {formatMinutes(catTotal)}</span>
+          </div>
           <div className="category-bars">
-            {categoryList.map(([cat, mins]) => (
-              <div key={cat} className="category-bar-row">
-                <span className="category-bar-label">{cat}</span>
-                <div className="category-bar-track">
-                  <div className="category-bar-fill" style={{ width: `${(mins / maxCatMin) * 100}%` }} />
+            {categoryList.map(([cat, mins], i) => {
+              const pct = catTotal > 0 ? Math.round((mins / catTotal) * 100) : 0
+              const color = CAT_COLORS[i % CAT_COLORS.length]
+              return (
+                <div key={cat} className="category-bar-row" style={{ ['--cat-color' as string]: color } as CSSProperties}>
+                  <span className="category-bar-label">
+                    <span className="category-dot" />
+                    <span className="category-name">{cat}</span>
+                  </span>
+                  <div className="category-bar-track">
+                    <div className="category-bar-fill" style={{ width: `${(mins / maxCatMin) * 100}%` }} />
+                  </div>
+                  <span className="category-bar-value">
+                    {formatMinutes(mins)}<span className="category-bar-pct">%{pct}</span>
+                  </span>
                 </div>
-                <span className="category-bar-value">{formatMinutes(mins)}</span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

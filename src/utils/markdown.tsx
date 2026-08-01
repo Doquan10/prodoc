@@ -67,7 +67,13 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
   return out
 }
 
-export function renderMarkdown(src: string): ReactNode[] {
+const noop = () => {}
+
+/**
+ * `interactive` true iken onay kutuları tıklanabilir olur; toggle'ı üst
+ * kapsayıcının onChange'i `data-task-line` üzerinden yakalar (bkz. WritingEditor).
+ */
+export function renderMarkdown(src: string, interactive = false): ReactNode[] {
   const lines = src.split('\n')
   const out: ReactNode[] = []
   let key = 0
@@ -128,6 +134,31 @@ export function renderMarkdown(src: string): ReactNode[] {
         i++
       }
       out.push(<blockquote key={key++}>{renderInline(buf.join(' '), `q${key}`)}</blockquote>)
+      continue
+    }
+
+    // Yapılacaklar (onay kutulu liste) — sırasız listeden önce bakılır
+    if (/^[-*]\s+\[[ xX]\]\s+/.test(line)) {
+      const items: ReactNode[] = []
+      while (i < lines.length && /^[-*]\s+\[[ xX]\]\s+/.test(lines[i])) {
+        const lm = lines[i].match(/^[-*]\s+\[([ xX])\]\s+(.*)$/)!
+        const checked = lm[1].toLowerCase() === 'x'
+        const srcIdx = i
+        items.push(
+          <li key={items.length} className={`md-task${checked ? ' checked' : ''}`}>
+            <input
+              type="checkbox"
+              data-task-line={srcIdx}
+              checked={checked}
+              disabled={!interactive}
+              onChange={noop}
+            />
+            <span>{renderInline(lm[2], `task${key}-${items.length}`)}</span>
+          </li>
+        )
+        i++
+      }
+      out.push(<ul key={key++} className="md-task-list">{items}</ul>)
       continue
     }
 

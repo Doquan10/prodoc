@@ -1033,20 +1033,53 @@ body {
 .day-bar.active { background: var(--ac); opacity: 0.7; }
 .day-bar.today  { background: var(--ac); opacity: 1; }
 
-.category-bars { display: flex; flex-direction: column; gap: 8px; }
-.category-bar-row { display: grid; grid-template-columns: 110px 1fr 50px; align-items: center; gap: 10px; }
-.category-bar-label {
+.review-tally {
   font-size: 11px;
-  color: var(--tx-2);
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--tx-3);
   font-family: var(--ff-mono);
 }
-.category-bar-track { height: 4px; background: var(--bd2); border-radius: 999px; overflow: hidden; }
-.category-bar-fill  { height: 100%; background: var(--ac); border-radius: 999px; }
-.category-bar-value { font-size: 11px; color: var(--tx-2); font-weight: 500; font-family: var(--ff-mono); }
+.category-bars { display: flex; flex-direction: column; gap: 11px; }
+.category-bar-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 130px) 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+.category-bar-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--tx-2);
+}
+.category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--cat-color, var(--ac));
+}
+.category-name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.category-bar-track { height: 7px; background: var(--bd2); border-radius: 999px; overflow: hidden; }
+.category-bar-fill  {
+  height: 100%;
+  background: var(--cat-color, var(--ac));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.category-bar-value {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--tx-1);
+  font-weight: 600;
+  font-family: var(--ff-mono);
+  white-space: nowrap;
+}
+.category-bar-pct { color: var(--tx-3); font-weight: 500; }
 
 /* Dönem seçicili değerlendirme */
 .review-header-row { flex-wrap: wrap; }
@@ -2845,3 +2878,75 @@ body {
   .session-duration-selector { justify-content: space-between; }
   .session-duration-selector .duration-btn { flex: 1; }
 }
+
+/* Slash "/" blok menüsü */
+.slash-menu {
+  position: fixed;
+  z-index: 60;
+  width: 252px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-2);
+  border: 1px solid var(--bd2);
+  border-radius: 10px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.slash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+.slash-item.active { background: var(--ac-bg); }
+.slash-icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--bd2);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--tx-2);
+  font-family: var(--ff-mono);
+}
+.slash-item.active .slash-icon { border-color: var(--ac-brd); color: var(--ac-h); }
+.slash-text { display: flex; flex-direction: column; min-width: 0; }
+.slash-label { font-size: 13px; font-weight: 500; color: var(--tx-1); }
+.slash-desc {
+  font-size: 11px;
+  color: var(--tx-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Yapılacaklar (markdown onay kutulu liste) */
+.md-task-list {
+  list-style: none;
+  padding-left: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.md-task { display: flex; align-items: flex-start; gap: 8px; }
+.md-task input[type="checkbox"] {
+  margin: 3px 0 0;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--ac);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.md-task input[type="checkbox"]:disabled { cursor: default; }
+.md-task.checked > span { color: var(--tx-3); text-decoration: line-through; }
