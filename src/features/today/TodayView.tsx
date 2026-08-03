@@ -59,8 +59,6 @@ export default function TodayView() {
   const [mustHour, setMustHour] = useState('') // '' = saat yok, yoksa '00'..'23'
   const [mustMin, setMustMin] = useState('00')
   const [mustMinutes, setMustMinutes] = useState('')
-  const [showQuickTask, setShowQuickTask] = useState(false)
-  const [quickTaskText, setQuickTaskText] = useState('')
 
   const today = todayStr()
   const plan = todayPlan()
@@ -101,14 +99,6 @@ export default function TodayView() {
     setMustMinutes('')
   }
 
-  function submitQuickTask(e?: React.KeyboardEvent) {
-    if (e && e.key !== 'Enter') return
-    if (!quickTaskText.trim()) { setShowQuickTask(false); return }
-    addMust(today, { text: quickTaskText.trim() })
-    setQuickTaskText('')
-    setShowQuickTask(false)
-  }
-
   // Ajanda: tamamlanmamışlar üstte (saatliler saate göre, saatsizler sonra),
   // tamamlananlar en altta.
   const orderedMust = [...plan.mustItems].sort((a, b) => {
@@ -126,7 +116,10 @@ export default function TodayView() {
   // Sıradaki: şu andan sonraki ilk tamamlanmamış saatli görev.
   const nextTask = orderedMust.find(t => !t.done && t.time && t.time >= nowHM)
 
-  const planItems = plan.itemIds.map(id => getItem(id)).filter(Boolean) as CuriosityItem[]
+  // İleri bir tarihe planlanmış konu bugünün planında görünmesin (tarih string'leri YYYY-MM-DD → sözlüksel karşılaştırma güvenli)
+  const planItems = plan.itemIds
+    .map(id => getItem(id))
+    .filter((it): it is CuriosityItem => !!it && (!it.scheduledDate || it.scheduledDate <= today))
 
   return (
     <div className="view-container">
@@ -137,26 +130,9 @@ export default function TodayView() {
           <p className="view-subtitle">{dateLabel}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-          <button className="btn btn-ghost" onClick={() => setShowQuickTask(v => !v)}>+ Bugüne Ekle</button>
           <button className="btn btn-primary" onClick={openCapture}>+ Merak Et</button>
         </div>
       </div>
-
-      {showQuickTask && (
-        <div className="quick-task-bar">
-          <input
-            className="input"
-            placeholder="Görev ekle (ör. markete git)… Enter ile kaydet"
-            value={quickTaskText}
-            onChange={e => setQuickTaskText(e.target.value)}
-            onKeyDown={submitQuickTask}
-            onBlur={() => { if (!quickTaskText.trim()) setShowQuickTask(false) }}
-            autoFocus
-          />
-          <button className="btn btn-primary" onClick={() => submitQuickTask()} disabled={!quickTaskText.trim()}>Ekle</button>
-          <button className="btn btn-ghost" onClick={() => { setQuickTaskText(''); setShowQuickTask(false) }}>İptal</button>
-        </div>
-      )}
 
       {/* Özet şeridi */}
       <div className="today-summary">

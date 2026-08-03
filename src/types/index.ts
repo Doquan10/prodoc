@@ -58,6 +58,13 @@ export interface DailyPlan {
 /** Bir düğüm ya klasör gibi davranan bir 'category' ya da markdown belgesi olan bir 'note'. */
 export type WritingKind = 'category' | 'note'
 
+/** Yazıya sırayla eklenen referans/döküman bağlantısı. */
+export interface DocLink {
+  id: string
+  url: string
+  title?: string
+}
+
 export interface Writing {
   id: string
   itemId?: string // bağlı olduğu merak konusu (opsiyonel — bağımsız yazı da olabilir)
@@ -66,6 +73,7 @@ export interface Writing {
   icon?: string // kategori için seçilen emoji simge (yoksa varsayılan klasör glyph'i)
   title: string
   content: string // markdown (yalnızca note için anlamlı)
+  documents?: DocLink[] // sağ paneldeki sıralı referans bağlantıları
   createdAt: string // ISO
   updatedAt: string // ISO
 }
@@ -74,4 +82,4 @@ export interface AppSettings {
   focusGoalMinutes: number
 }
 
-export type View = 'today' | 'queue' | 'plan' | 'focus' | 'pomodoro' | 'review' | 'finance' | 'writings'
+export type View = 'today' | 'queue' | 'plan' | 'focus' | 'review' | 'finance' | 'writings'

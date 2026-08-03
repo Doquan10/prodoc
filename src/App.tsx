@@ -5,11 +5,11 @@ import { usePlanStore } from './store/usePlanStore'
 import { useWritingStore } from './store/useWritingStore'
 import { usePomodoroStore } from './store/usePomodoroStore'
 import { useSettingsStore } from './store/useSettingsStore'
+import { useThemeStore } from './store/useThemeStore'
 import TodayView from './features/today/TodayView'
 import QueueView from './features/queue/QueueView'
 import PlanView from './features/plan/PlanView'
 import FocusView from './features/focus/FocusView'
-import PomodoroView from './features/pomodoro/PomodoroView'
 import PostSession from './features/focus/PostSession'
 import ReviewView from './features/review/ReviewView'
 import WritingsView from './features/writings/WritingsView'
@@ -21,9 +21,8 @@ import Toasts from './common/Toasts'
 const NAV: { view: import('./types').View; label: string; icon: string }[] = [
   { view: 'today', label: 'Bugün',        icon: '☀' },
   { view: 'queue', label: 'Queue',         icon: '◈' },
-  { view: 'plan',  label: 'Takvim',        icon: '▦' },
+  { view: 'plan',  label: 'Planla',        icon: '▦' },
   { view: 'focus', label: 'Odak',          icon: '●' },
-  { view: 'pomodoro', label: 'Pomodoro',   icon: '◔' },
   { view: 'writings', label: 'Yazılarım',  icon: '✎' },
   { view: 'review', label: 'Değerlendirme', icon: '◎' },
 ]
@@ -31,6 +30,8 @@ const NAV: { view: import('./types').View; label: string; icon: string }[] = [
 export default function App() {
   const { view, setView, selectedItemId, showCapture, showPostSession } = useUIStore()
   const activeSession = useSessionStore(s => s.active)
+  const theme = useThemeStore(s => s.theme)
+  const toggleTheme = useThemeStore(s => s.toggleTheme)
 
   // Tüm store'lar mock API'den hydrate olana dek bekle — gerçek backend'de de
   // aynı yükleme kapısı gerekecek
@@ -57,7 +58,17 @@ export default function App() {
     <div className="shell">
       {/* Sidebar */}
       <nav className="sidebar">
-        <span className="sidebar-logo">PLOS</span>
+        <div className="sidebar-header">
+          <span className="sidebar-logo">PLOS</span>
+          <button
+            className="sidebar-theme-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
+            aria-label={theme === 'dark' ? 'Aydınlık moda geç' : 'Karanlık moda geç'}
+          >
+            ☾
+          </button>
+        </div>
 
         <div className="sidebar-nav">
           {NAV.map(n => (
@@ -67,7 +78,7 @@ export default function App() {
               onClick={() => setView(n.view)}
             >
               <span className="sidebar-item-icon">{n.icon}</span>
-              {n.label}
+              <span className="sidebar-item-label">{n.label}</span>
               {n.view === 'focus' && activeSession && (
                 <span className="sidebar-session-dot" />
               )}
@@ -81,7 +92,7 @@ export default function App() {
             onClick={() => setView('finance')}
           >
             <span className="sidebar-item-icon">₺</span>
-            Finans
+            <span className="sidebar-item-label">Finans</span>
           </button>
         </div>
 
@@ -116,8 +127,6 @@ export default function App() {
             <PlanView />
           ) : view === 'focus' ? (
             <FocusView />
-          ) : view === 'pomodoro' ? (
-            <PomodoroView />
           ) : view === 'writings' ? (
             <WritingsView />
           ) : view === 'finance' ? (

@@ -18,7 +18,7 @@ export const TEXT_COLORS: { name: string; value: string }[] = [
   { name: 'mor', value: '#a78bfa' },
 ]
 
-const COLOR_MAP: Record<string, string> = {
+export const COLOR_MAP: Record<string, string> = {
   'kırmızı': '#e46a6a', kirmizi: '#e46a6a', red: '#e46a6a',
   turuncu: '#e0a83f', orange: '#e0a83f',
   'sarı': '#d9c34a', sari: '#d9c34a', yellow: '#d9c34a',

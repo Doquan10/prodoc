@@ -16,6 +16,8 @@ interface PlanStore {
   addMust: (date: string, task: { text: string; time?: string; minutes?: number }) => void
   removeMust: (date: string, id: string) => void
   toggleMust: (date: string, id: string) => void
+  /** Bir görevi (MustTask) tüm alanlarını koruyarak bir günden diğerine taşır. */
+  moveMust: (from: string, to: string, id: string) => void
   todayPlan: () => DailyPlan
 }
 
@@ -76,6 +78,16 @@ export const usePlanStore = create<PlanStore>((set, get) => {
         ...plan,
         mustItems: plan.mustItems.map(m => (m.id === id ? { ...m, done: !m.done } : m)),
       })
+    },
+
+    moveMust(from, to, id) {
+      if (from === to) return
+      const fromPlan = get().plans[from]
+      const task = fromPlan?.mustItems.find(m => m.id === id)
+      if (!fromPlan || !task) return
+      commitPlan({ ...fromPlan, mustItems: fromPlan.mustItems.filter(m => m.id !== id) })
+      const toPlan = get().getPlan(to)
+      commitPlan({ ...toPlan, mustItems: [...toPlan.mustItems, task] })
     },
   }
 })

@@ -75,6 +75,56 @@ export interface CreditDetails {
   creditInstallments?: CreditInstallment[] | null
 }
 
+/** CategoryViewModel */
+export interface Category {
+  id: number
+  name: string
+}
+
+/** ExpenseViewModel — bir harcama kalemi */
+export interface Expense {
+  id: number
+  name: string
+  description?: string | null
+  categoryId: number
+  categoryName?: string | null
+  creditCardId?: number | null
+  creditCardName?: string | null
+  amount: number
+  expenseDate: string
+}
+
+/** ExpenseDayGroupViewModel — bir güne ait harcamalar */
+export interface ExpenseDayGroup {
+  expenseDate: string
+  expenses: Expense[]
+}
+
+/** GetUserExpensesDetails yanıtı */
+export interface ExpensesData {
+  totalExpense: number
+  expensesDayGroup?: ExpenseDayGroup[] | null
+}
+
+/** AddExpense body — yeni harcama oluşturma */
+export interface NewExpense {
+  name: string
+  description?: string | null
+  amount: number
+  categoryId: number
+  reduceMyBalance: boolean
+  expenseChannel: number
+  expenseDate: string
+}
+
+/** GetUserExpensesDetails body — null alanlar filtreye dahil edilmez */
+export interface ExpenseFilter {
+  categoryId: number | null
+  day: number | null
+  month: number | null
+  year: number | null
+}
+
 /** MobileDashboardViewModel */
 export interface FinanceDashboardData {
   totalDebt: number

@@ -1,63 +1,34 @@
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ChangeEvent as ReactChangeEvent } from 'react'
-import type { Writing } from '../../types'
+import { useEffect, useRef, useState } from 'react'
+import type { Writing, DocLink } from '../../types'
 import { useWritingStore } from '../../store/useWritingStore'
 import { useQueueStore } from '../../store/useQueueStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useToastStore } from '../../store/useToastStore'
-import { renderMarkdown, TEXT_COLORS } from '../../utils/markdown'
-import { dayOf, formatDate } from '../../utils/format'
-import { getCaretCoords } from '../../utils/caret'
+import RichTextEditor from './RichTextEditor'
 
 interface Props {
   writingId: string
 }
 
-interface SlashOption {
-  id: string
-  icon: string
-  label: string
-  desc: string
-  type: 'prefix' | 'insert'
-  text: string
-  caretOffset?: number
-  keywords: string[]
+/** Şemasız girişe https:// ekler; geçersizse null döner. */
+function normalizeUrl(raw: string): string | null {
+  let u = raw.trim()
+  if (!u) return null
+  if (!/^[a-z]+:\/\//i.test(u)) u = 'https://' + u
+  try {
+    return new URL(u).href
+  } catch {
+    return null
+  }
 }
 
-/** "/" ile açılan blok menüsü seçenekleri. */
-const SLASH_OPTIONS: SlashOption[] = [
-  { id: 'h1', icon: 'H₁', label: 'Başlık 1', desc: 'Büyük bölüm başlığı', type: 'prefix', text: '# ', keywords: ['baslik', 'başlık', 'h1', 'heading', 'title'] },
-  { id: 'h2', icon: 'H₂', label: 'Başlık 2', desc: 'Orta başlık', type: 'prefix', text: '## ', keywords: ['baslik', 'başlık', 'h2'] },
-  { id: 'h3', icon: 'H₃', label: 'Başlık 3', desc: 'Küçük başlık', type: 'prefix', text: '### ', keywords: ['baslik', 'başlık', 'h3'] },
-  { id: 'ul', icon: '•', label: 'Madde listesi', desc: 'Sırasız liste', type: 'prefix', text: '- ', keywords: ['liste', 'madde', 'bullet', 'ul'] },
-  { id: 'ol', icon: '1.', label: 'Numaralı liste', desc: 'Sıralı liste', type: 'prefix', text: '1. ', keywords: ['liste', 'numara', 'sirali', 'sıralı', 'ol', 'number'] },
-  { id: 'todo', icon: '☐', label: 'Yapılacak', desc: 'Onay kutulu görev', type: 'prefix', text: '- [ ] ', keywords: ['todo', 'yapilacak', 'yapılacak', 'gorev', 'görev', 'task', 'checkbox', 'onay'] },
-  { id: 'quote', icon: '❝', label: 'Alıntı', desc: 'Alıntı bloğu', type: 'prefix', text: '> ', keywords: ['alinti', 'alıntı', 'quote', 'blok'] },
-  { id: 'code', icon: '</>', label: 'Kod bloğu', desc: 'Tek aralıklı kod', type: 'insert', text: '```\n\n```', caretOffset: 4, keywords: ['kod', 'code', 'blok'] },
-  { id: 'hr', icon: '—', label: 'Ayraç', desc: 'Yatay çizgi', type: 'insert', text: '---\n', keywords: ['ayrac', 'ayraç', 'cizgi', 'çizgi', 'divider', 'hr'] },
-]
-
-/** İmleç bir liste/alıntı satırının sonundaysa, sonraki satırın işaretçisini üretir. */
-function listContinuation(line: string): { marker: string; isEmpty: boolean } | null {
-  let m
-  if ((m = line.match(/^(\s*)[-*]\s+\[[ xX]\]\s+(.*)$/)))
-    return { marker: m[1] + '- [ ] ', isEmpty: !m[2].trim() }
-  if ((m = line.match(/^(\s*)([-*])\s+(.*)$/)))
-    return { marker: m[1] + m[2] + ' ', isEmpty: !m[3].trim() }
-  if ((m = line.match(/^(\s*)(\d+)\.\s+(.*)$/)))
-    return { marker: m[1] + (parseInt(m[2]) + 1) + '. ', isEmpty: !m[3].trim() }
-  if ((m = line.match(/^(\s*)>\s?(.*)$/)))
-    return { marker: m[1] + '> ', isEmpty: !m[2].trim() }
-  return null
-}
-
-/** İmlecin hemen solunda "/sorgu" var mı? Varsa slash menüsü için konum + sorgu. */
-function detectSlash(text: string, caret: number): { slashPos: number; query: string } | null {
-  const lineStart = text.lastIndexOf('\n', caret - 1) + 1
-  const seg = text.slice(lineStart, caret)
-  const m = seg.match(/(?:^|\s)\/(\S*)$/)
-  if (!m) return null
-  const query = m[1]
-  return { slashPos: caret - query.length - 1, query }
+/** Görünen etiket için ana makineyi (www'siz) döndürür. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
 }
 
 export default function WritingEditor({ writingId }: Props) {
@@ -70,16 +41,13 @@ export default function WritingEditor({ writingId }: Props) {
   const writing = getWriting(writingId)
   const [title, setTitle] = useState(writing?.title ?? '')
   const [content, setContent] = useState(writing?.content ?? '')
-  // 'split' varsayılan — yazarken renk/liste biçimi sağda canlı görünür
-  const [mode, setMode] = useState<'write' | 'split' | 'preview'>('split')
   const [saved, setSaved] = useState(true)
   const [shareOpen, setShareOpen] = useState(false)
-  const [slash, setSlash] = useState<{ slashPos: number; query: string; top: number; left: number } | null>(null)
-  const [slashIndex, setSlashIndex] = useState(0)
+  const [docUrl, setDocUrl] = useState('')
+  const [docTitle, setDocTitle] = useState('')
 
-  const draftRef = useRef({ title, content })
+  const draftRef = useRef({ title: writing?.title ?? '', content: writing?.content ?? '' })
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const contentRef = useRef<HTMLTextAreaElement>(null)
 
   function commit() {
     const w = useWritingStore.getState().getWriting(writingId)
@@ -109,146 +77,6 @@ export default function WritingEditor({ writingId }: Props) {
       useWritingStore.getState().updateWriting(writingId, draftRef.current)
     }
   }, [writingId])
-
-  /** Seçili metni before/after ile sarar; seçim yoksa placeholder ekler. */
-  function applyInline(before: string, after: string, placeholder: string) {
-    const ta = contentRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const sel = content.slice(start, end) || placeholder
-    const next = content.slice(0, start) + before + sel + after + content.slice(end)
-    handleChange({ content: next })
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.setSelectionRange(start + before.length, start + before.length + sel.length)
-    })
-  }
-
-  /** Seçimin kapsadığı satırların başına liste/alıntı/başlık öneki ekler. */
-  function applyLinePrefix(prefix: string, numbered = false) {
-    const ta = contentRef.current
-    if (!ta) return
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const lineStart = content.lastIndexOf('\n', start - 1) + 1
-    const lineEndIdx = content.indexOf('\n', end)
-    const lineEnd = lineEndIdx === -1 ? content.length : lineEndIdx
-    const lines = content.slice(lineStart, lineEnd).split('\n')
-    const prefixed = lines
-      .map((l, i) => (l.trim() || lines.length === 1 ? (numbered ? `${i + 1}. ` : prefix) + l : l))
-      .join('\n')
-    const next = content.slice(0, lineStart) + prefixed + content.slice(lineEnd)
-    handleChange({ content: next })
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.setSelectionRange(lineStart, lineStart + prefixed.length)
-    })
-  }
-
-  function closeSlash() { setSlash(null) }
-
-  /** İçerik değişince taslağı işler ve slash menüsünü günceller. */
-  function handleContentChange(value: string, caret: number) {
-    handleChange({ content: value })
-    const info = detectSlash(value, caret)
-    if (info && contentRef.current) {
-      const c = getCaretCoords(contentRef.current, info.slashPos)
-      setSlash({ slashPos: info.slashPos, query: info.query, top: c.top + c.height + 4, left: c.left })
-      setSlashIndex(0)
-    } else if (slash) {
-      closeSlash()
-    }
-  }
-
-  /** Slash menüsünden seçilen bloğu imlecin bulunduğu satıra uygular. */
-  function applyBlock(opt: SlashOption) {
-    const ta = contentRef.current
-    if (!ta || !slash) return
-    const caret = ta.selectionStart
-    const from = slash.slashPos
-    const withoutSlash = content.slice(0, from) + content.slice(caret)
-    let next: string
-    let newCaret: number
-    if (opt.type === 'prefix') {
-      const ls = withoutSlash.lastIndexOf('\n', from - 1) + 1
-      next = withoutSlash.slice(0, ls) + opt.text + withoutSlash.slice(ls)
-      newCaret = ls + opt.text.length
-    } else {
-      next = withoutSlash.slice(0, from) + opt.text + withoutSlash.slice(from)
-      newCaret = from + (opt.caretOffset ?? opt.text.length)
-    }
-    closeSlash()
-    handleChange({ content: next })
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.setSelectionRange(newCaret, newCaret)
-    })
-  }
-
-  /** Enter'a basılınca liste/alıntı satırını otomatik sürdürür veya boşsa çıkar. */
-  function maybeContinueList(): boolean {
-    const ta = contentRef.current
-    if (!ta || ta.selectionStart !== ta.selectionEnd) return false
-    const caret = ta.selectionStart
-    const ls = content.lastIndexOf('\n', caret - 1) + 1
-    const leIdx = content.indexOf('\n', caret)
-    const le = leIdx === -1 ? content.length : leIdx
-    if (caret !== le) return false // yalnızca satır sonunda
-    const cont = listContinuation(content.slice(ls, le))
-    if (!cont) return false
-    let next: string
-    let newCaret: number
-    if (cont.isEmpty) {
-      next = content.slice(0, ls) + content.slice(le) // işaretçiyi sil, listeden çık
-      newCaret = ls
-    } else {
-      next = content.slice(0, caret) + '\n' + cont.marker + content.slice(caret)
-      newCaret = caret + 1 + cont.marker.length
-    }
-    handleChange({ content: next })
-    requestAnimationFrame(() => {
-      ta.focus()
-      ta.setSelectionRange(newCaret, newCaret)
-    })
-    return true
-  }
-
-  function handleContentKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
-    if (slash && slashFiltered.length > 0) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex(i => (i + 1) % slashFiltered.length); return }
-      if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex(i => (i - 1 + slashFiltered.length) % slashFiltered.length); return }
-      if (e.key === 'Enter' || e.key === 'Tab') {
-        e.preventDefault()
-        applyBlock(slashFiltered[Math.min(slashIndex, slashFiltered.length - 1)])
-        return
-      }
-      if (e.key === 'Escape') { e.preventDefault(); closeSlash(); return }
-    }
-    if (e.key === 'Enter' && !e.shiftKey && maybeContinueList()) {
-      e.preventDefault()
-    }
-  }
-
-  /** Önizleme/canlı panelde onay kutusuna tıklayınca kaynaktaki [ ] ↔ [x] değişir. */
-  function handleTaskToggle(e: ReactChangeEvent<HTMLDivElement>) {
-    const target = e.target as HTMLInputElement
-    const attr = target.dataset?.taskLine
-    if (attr === undefined) return
-    const lineIndex = parseInt(attr)
-    const lines = content.split('\n')
-    const l = lines[lineIndex]
-    if (l === undefined) return
-    lines[lineIndex] = l.replace(/^(\s*[-*]\s+\[)([ xX])(\])/, (_m, a, c, b) => a + (c.toLowerCase() === 'x' ? ' ' : 'x') + b)
-    handleChange({ content: lines.join('\n') })
-  }
-
-  const slashFiltered = slash
-    ? SLASH_OPTIONS.filter(o => {
-        const q = slash.query.toLocaleLowerCase('tr')
-        return !q || o.label.toLocaleLowerCase('tr').includes(q) || o.keywords.some(k => k.includes(q))
-      })
-    : []
 
   if (!writing) {
     return (
@@ -280,7 +108,7 @@ export default function WritingEditor({ writingId }: Props) {
 
   function goTo(id: string) {
     commit()
-    openWriting(id) // WritingsView'daki key remount ile editör state'i sıfırlanır
+    openWriting(id)
   }
 
   function shareText() {
@@ -324,10 +152,41 @@ export default function WritingEditor({ writingId }: Props) {
     setShareOpen(false)
   }
 
+  // ── Dökümanlar (sıralı bağlantılar) ─────────
+  const documents = writing.documents ?? []
+
+  function persistDocs(next: DocLink[]) {
+    updateWriting(writingId, { documents: next })
+  }
+
+  function addDoc() {
+    const url = normalizeUrl(docUrl)
+    if (!url) {
+      showToast('Geçerli bir bağlantı gir', 'error')
+      return
+    }
+    persistDocs([...documents, { id: crypto.randomUUID(), url, title: docTitle.trim() || undefined }])
+    setDocUrl('')
+    setDocTitle('')
+  }
+
+  function removeDoc(id: string) {
+    persistDocs(documents.filter(d => d.id !== id))
+  }
+
+  function moveDoc(id: string, dir: -1 | 1) {
+    const i = documents.findIndex(d => d.id === id)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= documents.length) return
+    const next = [...documents]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    persistDocs(next)
+  }
+
   function handleDelete() {
     if (!confirm('Bu yazıyı silmek istiyor musun?')) return
     clearTimeout(timer.current)
-    draftRef.current = { title: writing?.title ?? '', content: writing?.content ?? '' } // unmount flush'ı yazmasın
+    draftRef.current = { title: writing?.title ?? '', content: writing?.content ?? '' }
     const parentId = writing?.parentId
     deleteWriting(writingId)
     if (parentId) openWriting(parentId)
@@ -335,8 +194,8 @@ export default function WritingEditor({ writingId }: Props) {
   }
 
   return (
-    <div className={`view-container writing-editor ${mode === 'split' ? 'wide' : ''}`}>
-      {/* Üst bar — Notion tarzı breadcrumb: Yazılarım / kategori / ... / bu sayfa */}
+    <div className="view-container writing-editor wide">
+      {/* Üst bar */}
       <div className="writing-editor-top">
         <nav className="writing-crumbs">
           <button className="writing-crumb" onClick={() => { commit(); closeWriting() }}>
@@ -354,21 +213,6 @@ export default function WritingEditor({ writingId }: Props) {
           <span className="writing-crumb current">{title.trim() || 'Başlıksız'}</span>
         </nav>
         <div className="writing-editor-actions">
-          <div className="writing-tabs">
-            {([
-              { value: 'write', label: '✎ Yaz' },
-              { value: 'split', label: '◧ Canlı' },
-              { value: 'preview', label: '◉ Önizle' },
-            ] as const).map(t => (
-              <button
-                key={t.value}
-                className={`writing-tab ${mode === t.value ? 'active' : ''}`}
-                onClick={() => { commit(); setMode(t.value) }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
           <div className="share-menu-wrap">
             <button className="btn btn-primary" onClick={() => setShareOpen(v => !v)}>
               ↗ Paylaş
@@ -396,90 +240,79 @@ export default function WritingEditor({ writingId }: Props) {
         </button>
       )}
 
-      {mode === 'preview' ? (
-        <article className="writing-preview markdown-body" onChange={handleTaskToggle}>
-          <h1 className="writing-preview-title">{title || 'Başlıksız'}</h1>
-          <p className="writing-preview-meta">
-            {formatDate(dayOf(writing.createdAt))} · {wordCount} kelime
-          </p>
-          {content.trim()
-            ? renderMarkdown(content, true)
-            : <p style={{ color: 'var(--tx-3)' }}>Henüz içerik yok.</p>}
-        </article>
-      ) : (
-        <>
-          <input
-            className="writing-title-input"
-            placeholder="Yazı başlığı…"
-            value={title}
-            onChange={e => handleChange({ title: e.target.value })}
-          />
-          <div className="writing-toolbar">
-            <button title="Kalın" style={{ fontWeight: 700 }} onClick={() => applyInline('**', '**', 'kalın')}>B</button>
-            <button title="İtalik" style={{ fontStyle: 'italic' }} onClick={() => applyInline('*', '*', 'italik')}>I</button>
-            <button title="Kod" onClick={() => applyInline('`', '`', 'kod')}>{'</>'}</button>
-            <button title="Başlık" onClick={() => applyLinePrefix('## ')}>H</button>
-            <span className="writing-toolbar-sep" />
-            <button title="Madde listesi" onClick={() => applyLinePrefix('- ')}>•≡</button>
-            <button title="Numaralı liste" onClick={() => applyLinePrefix('', true)}>1≡</button>
-            <button title="Yapılacak (onay kutusu)" onClick={() => applyLinePrefix('- [ ] ')}>☑</button>
-            <button title="Alıntı" onClick={() => applyLinePrefix('> ')}>❝</button>
-            <span className="writing-toolbar-sep" />
-            {TEXT_COLORS.map(c => (
-              <button
-                key={c.name}
-                className="writing-color-swatch"
-                title={`${c.name} yazı`}
-                style={{ background: c.value }}
-                onClick={() => applyInline(`{${c.name}|`, '}', 'renkli metin')}
-              />
-            ))}
+      <div className="writing-layout">
+        <div className="writing-main">
+      <input
+        className="writing-title-input"
+        placeholder="Yazı başlığı…"
+        value={title}
+        onChange={e => handleChange({ title: e.target.value })}
+      />
+
+      <RichTextEditor
+        value={writing.content ?? ''}
+        onChange={md => handleChange({ content: md })}
+        onBlur={commit}
+        placeholder={'Blog yazıyormuş gibi anlat…  "/" ile blok ekle (başlık, liste, yapılacak, kod…)'}
+      />
+
+      <div className="writing-editor-footer">
+        <span className={`notes-status ${saved ? '' : 'pending'}`}>
+          {saved ? 'kaydedildi ✓' : 'yazılıyor…'}
+        </span>
+        <span>{wordCount} kelime · yazdıkça biçimlenir</span>
+      </div>
+        </div>
+
+        {/* Dökümanlar — sıralı referans bağlantıları */}
+        <aside className="writing-docs">
+          <div className="writing-docs-head">
+            <span className="writing-docs-title">Dökümanlar</span>
+            {documents.length > 0 && <span className="fin-count">{documents.length}</span>}
           </div>
-          <div className={`writing-edit-area ${mode === 'split' ? 'split' : ''}`}>
-            <textarea
-              ref={contentRef}
-              className="writing-content-input"
-              placeholder={'Blog yazıyormuş gibi anlat…\n\n"/" ile blok ekle (başlık, liste, yapılacak, kod…)\nMarkdown: # başlık, **kalın**, *italik*, `kod`, - liste, > alıntı, {kırmızı|renkli yazı}'}
-              value={content}
-              onChange={e => handleContentChange(e.target.value, e.target.selectionStart)}
-              onKeyDown={handleContentKeyDown}
-              onBlur={closeSlash}
-              autoFocus
+
+          {documents.length === 0 ? (
+            <p className="writing-docs-empty">Henüz bağlantı yok. Aşağıdan sırayla ekle.</p>
+          ) : (
+            <ol className="writing-docs-list">
+              {documents.map((d, i) => (
+                <li key={d.id} className="writing-doc">
+                  <span className="writing-doc-index">{i + 1}</span>
+                  <a className="writing-doc-link" href={d.url} target="_blank" rel="noopener noreferrer" title={d.url}>
+                    <span className="writing-doc-name">{d.title?.trim() || hostOf(d.url)}</span>
+                    <span className="writing-doc-host">{hostOf(d.url)}</span>
+                  </a>
+                  <div className="writing-doc-actions">
+                    <button title="Yukarı" disabled={i === 0} onClick={() => moveDoc(d.id, -1)}>↑</button>
+                    <button title="Aşağı" disabled={i === documents.length - 1} onClick={() => moveDoc(d.id, 1)}>↓</button>
+                    <button title="Kaldır" className="danger" onClick={() => removeDoc(d.id)}>×</button>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
+
+          <div className="writing-docs-form">
+            <input
+              className="input"
+              placeholder="Bağlantı (https://…)"
+              value={docUrl}
+              onChange={e => setDocUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDoc() } }}
             />
-            {slash && slashFiltered.length > 0 && (
-              <div className="slash-menu" style={{ top: slash.top, left: slash.left }}>
-                {slashFiltered.map((o, idx) => (
-                  <button
-                    key={o.id}
-                    className={`slash-item${idx === slashIndex ? ' active' : ''}`}
-                    onMouseDown={e => { e.preventDefault(); applyBlock(o) }}
-                    onMouseEnter={() => setSlashIndex(idx)}
-                  >
-                    <span className="slash-icon">{o.icon}</span>
-                    <span className="slash-text">
-                      <span className="slash-label">{o.label}</span>
-                      <span className="slash-desc">{o.desc}</span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {mode === 'split' && (
-              <div className="writing-live-pane markdown-body" onChange={handleTaskToggle}>
-                {content.trim()
-                  ? renderMarkdown(content, true)
-                  : <p style={{ color: 'var(--tx-3)' }}>Yazdıkça burada biçimli halini göreceksin.</p>}
-              </div>
-            )}
+            <input
+              className="input"
+              placeholder="Başlık (opsiyonel)"
+              value={docTitle}
+              onChange={e => setDocTitle(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addDoc() } }}
+            />
+            <button className="btn btn-primary" onClick={addDoc} disabled={!docUrl.trim()}>
+              + Ekle
+            </button>
           </div>
-          <div className="writing-editor-footer">
-            <span className={`notes-status ${saved ? '' : 'pending'}`}>
-              {saved ? 'kaydedildi ✓' : 'yazılıyor…'}
-            </span>
-            <span>{wordCount} kelime · markdown destekli</span>
-          </div>
-        </>
-      )}
+        </aside>
+      </div>
     </div>
   )
 }

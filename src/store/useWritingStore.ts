@@ -13,7 +13,7 @@ interface WritingStore {
   writings: Writing[]
   hydrated: boolean
   addWriting: (opts?: { title?: string; itemId?: string; content?: string; parentId?: string; kind?: WritingKind }) => string
-  updateWriting: (id: string, changes: Partial<Pick<Writing, 'title' | 'content' | 'itemId' | 'parentId' | 'icon'>>) => void
+  updateWriting: (id: string, changes: Partial<Pick<Writing, 'title' | 'content' | 'itemId' | 'parentId' | 'icon' | 'documents'>>) => void
   deleteWriting: (id: string) => void
   getWriting: (id: string) => Writing | undefined
   getByItem: (itemId: string) => Writing[]

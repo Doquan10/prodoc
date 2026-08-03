@@ -4,6 +4,7 @@ import { useQueueStore } from '../../store/useQueueStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useWritingStore } from '../../store/useWritingStore'
 import { formatSeconds, formatMinutes } from '../../utils/format'
+import PomodoroView from '../pomodoro/PomodoroView'
 
 export default function FocusView() {
   const { active, pause, resume, logDistraction, abandon } = useSessionStore()
@@ -47,18 +48,8 @@ export default function FocusView() {
     }
   }, [item?.id])
 
-  if (!active) {
-    return (
-      <div className="view-container">
-        <div className="empty-state" style={{ marginTop: 80 }}>
-          <p>Aktif seans yok.</p>
-          <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setView('today')}>
-            Bugüne Dön
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // Aktif öğrenme seansı yoksa bu görünüm serbest Pomodoro zamanlayıcısına düşer.
+  if (!active) return <PomodoroView />
 
   const totalSeconds = active.plannedMinutes * 60
   const remaining = totalSeconds - elapsed

@@ -3,10 +3,12 @@ import Button from '../../common/Button'
 import FinanceLogin from './FinanceLogin'
 import FinanceDashboard from './FinanceDashboard'
 import FinanceCredits from './FinanceCredits'
+import FinanceExpenses from './FinanceExpenses'
 
 const TABS: { id: FinanceTab; label: string }[] = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'credits', label: 'Krediler' },
+  { id: 'expenses', label: 'Harcamalar' },
 ]
 
 export default function FinanceView() {
@@ -15,18 +17,22 @@ export default function FinanceView() {
   const setTab = useFinanceStore(s => s.setTab)
   const dashLoading = useFinanceStore(s => s.loading)
   const creditsLoading = useFinanceStore(s => s.creditsLoading)
+  const expensesLoading = useFinanceStore(s => s.expensesLoading)
   const fetchDashboard = useFinanceStore(s => s.fetchDashboard)
   const fetchCredits = useFinanceStore(s => s.fetchCredits)
+  const fetchExpenses = useFinanceStore(s => s.fetchExpenses)
   const logout = useFinanceStore(s => s.logout)
   const hideAmounts = useFinanceStore(s => s.hideAmounts)
   const toggleHideAmounts = useFinanceStore(s => s.toggleHideAmounts)
 
   if (!auth) return <FinanceLogin />
 
-  const refreshing = tab === 'dashboard' ? dashLoading : creditsLoading
+  const refreshing =
+    tab === 'dashboard' ? dashLoading : tab === 'credits' ? creditsLoading : expensesLoading
   const refresh = () => {
     if (tab === 'dashboard') void fetchDashboard()
-    else void fetchCredits()
+    else if (tab === 'credits') void fetchCredits()
+    else void fetchExpenses()
   }
 
   return (
@@ -63,7 +69,13 @@ export default function FinanceView() {
         ))}
       </div>
 
-      {tab === 'dashboard' ? <FinanceDashboard /> : <FinanceCredits />}
+      {tab === 'dashboard' ? (
+        <FinanceDashboard />
+      ) : tab === 'credits' ? (
+        <FinanceCredits />
+      ) : (
+        <FinanceExpenses />
+      )}
     </div>
   )
 }

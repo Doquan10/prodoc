@@ -7,6 +7,7 @@ import { useUIStore } from '../../store/useUIStore'
 import { useWritingStore } from '../../store/useWritingStore'
 import { difficultyLabel, formatMinutes, todayStr, formatDate, relativeDayLabel, dayOf } from '../../utils/format'
 import QueueItem from './QueueItem'
+import RichTextEditor from '../writings/RichTextEditor'
 
 const DURATIONS = [10, 25, 45, 90]
 const DIFFICULTIES: Difficulty[] = ['light', 'medium', 'deep']
@@ -20,7 +21,7 @@ export default function ItemDetail({ itemId }: Props) {
   const { selectItem, setView, closePostSession, openWriting } = useUIStore()
   const { getItem, updateItem, deleteItem, getChildren, addItem } = useQueueStore()
   const startSession = useSessionStore(s => s.start)
-  const { addToPlan } = usePlanStore()
+  const { addToPlan, removeFromPlan } = usePlanStore()
   const allWritings = useWritingStore(s => s.writings)
   const addWriting = useWritingStore(s => s.addWriting)
   const categoryOptions = useWritingStore(s => s.categoryOptions)
@@ -244,36 +245,44 @@ export default function ItemDetail({ itemId }: Props) {
             </div>
           </div>
 
-          {/* Priority */}
-          <div className="detail-section">
-            <span className="detail-label">Öncelik</span>
-            <div className="priority-selector">
-              {[1, 2, 3, 4, 5].map(p => (
-                <button
-                  key={p}
-                  className={`priority-btn ${(item.priority ?? 3) >= p ? 'active' : ''}`}
-                  onClick={() => updateItem(itemId, { priority: p })}
-                >
-                  ★
+          {/* Plana Ekle (sol) + Öncelik (sağ) tek satırda */}
+          <div className="detail-schedule-priority">
+            {/* Schedule */}
+            <div className="detail-section detail-schedule">
+              <span className="detail-label">Plana Ekle · {relativeDayLabel(scheduleDate)}</span>
+              <div className="schedule-row">
+                <input
+                  className="input select-sm"
+                  type="date"
+                  value={scheduleDate}
+                  min={todayStr()}
+                  onChange={e => setScheduleDate(e.target.value || todayStr())}
+                />
+                <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => {
+                  // Bir konu tek bir güne planlanır — başka güne taşınıyorsa eski günün planından çıkar
+                  if (item.scheduledDate && item.scheduledDate !== scheduleDate) removeFromPlan(item.scheduledDate, itemId)
+                  addToPlan(scheduleDate, itemId)
+                  updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate })
+                }}>
+                  + Plana Ekle
                 </button>
-              ))}
+              </div>
             </div>
-          </div>
 
-          {/* Schedule */}
-          <div className="detail-section">
-            <span className="detail-label">Plana Ekle · {relativeDayLabel(scheduleDate)}</span>
-            <div className="schedule-row">
-              <input
-                className="input select-sm"
-                type="date"
-                value={scheduleDate}
-                min={todayStr()}
-                onChange={e => setScheduleDate(e.target.value || todayStr())}
-              />
-              <button className="btn btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={() => { addToPlan(scheduleDate, itemId); updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate }) }}>
-                + Plana Ekle
-              </button>
+            {/* Priority */}
+            <div className="detail-section">
+              <span className="detail-label">Öncelik</span>
+              <div className="priority-selector">
+                {[1, 2, 3, 4, 5].map(p => (
+                  <button
+                    key={p}
+                    className={`priority-btn ${(item.priority ?? 3) >= p ? 'active' : ''}`}
+                    onClick={() => updateItem(itemId, { priority: p })}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -285,13 +294,12 @@ export default function ItemDetail({ itemId }: Props) {
                 {notesSaved ? (notes ? 'kaydedildi ✓' : '') : 'yazılıyor…'}
               </span>
             </div>
-            <textarea
-              className="input notes-textarea"
-              placeholder="Öğrendiklerin, kaynaklar, kod parçaları..."
-              value={notes}
-              onChange={e => handleNotesChange(e.target.value)}
+            <RichTextEditor
+              value={item.notes ?? ''}
+              onChange={handleNotesChange}
               onBlur={flushNotes}
-              rows={6}
+              placeholder={'Öğrendiklerin, kaynaklar, kod parçaları…  "/" ile başlık, liste, yapılacak ekle'}
+              ceClassName="writing-content-input notes-ce"
             />
           </div>
 

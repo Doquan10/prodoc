@@ -5,6 +5,10 @@ import type {
   FinanceDashboardData,
   CreditListItem,
   CreditDetails,
+  Category,
+  ExpensesData,
+  ExpenseFilter,
+  NewExpense,
 } from '../types/finance'
 
 // Dev'de vite proxy üzerinden gider (vite.config.ts); prod için VITE_FINANCE_API_URL set edilebilir.
@@ -148,6 +152,21 @@ export function getCreditsRequest(): Promise<CreditListItem[]> {
 export function getCreditDetailsRequest(id: number): Promise<CreditDetails> {
   // id hem query hem body olarak gönderilir — [FromQuery] / [FromBody] iki bağlama da çalışsın
   return request<CreditDetails>(`api/Credit/GetCreditDetails?id=${id}`, { body: id })
+}
+
+export function getCategoriesRequest(): Promise<Category[]> {
+  return request<Category[]>('api/Category/GetAllCategories', { method: 'GET' })
+}
+
+export function getExpensesRequest(filter: ExpenseFilter): Promise<ExpensesData> {
+  // Body: { categoryId, day, month, year } — null alanlar filtreye dahil edilmez
+  return request<ExpensesData>('api/MonthlyExpense/GetUserExpensesDetails', { body: filter })
+}
+
+export async function addExpenseRequest(payload: NewExpense): Promise<void> {
+  // Body: { name, description, amount, categoryId, reduceMyBalance, expenseChannel, expenseDate }
+  const ok = await request<boolean>('api/MonthlyExpense/AddExpense', { body: payload })
+  if (ok === false) throw new Error('Harcama eklenemedi.')
 }
 
 export async function payInstallmentRequest(installmentId: number): Promise<void> {

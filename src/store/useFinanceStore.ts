@@ -6,6 +6,9 @@ import {
   getCreditsRequest,
   getCreditDetailsRequest,
   payInstallmentRequest,
+  getCategoriesRequest,
+  getExpensesRequest,
+  addExpenseRequest,
 } from '../api/financeApi'
 import { useToastStore } from './useToastStore'
 import type {
@@ -13,12 +16,25 @@ import type {
   FinanceDashboardData,
   CreditListItem,
   CreditDetails,
+  Category,
+  ExpensesData,
+  ExpenseFilter,
+  NewExpense,
 } from '../types/finance'
 
 const STORAGE_KEY = 'plos_finance_auth'
 const HIDE_KEY = 'plos_finance_hide'
 
-export type FinanceTab = 'dashboard' | 'credits'
+export type FinanceTab = 'dashboard' | 'credits' | 'expenses'
+
+const now = new Date()
+
+const defaultExpenseFilter: ExpenseFilter = {
+  categoryId: null,
+  day: null,
+  month: now.getMonth() + 1,
+  year: now.getFullYear(),
+}
 
 function loadAuth(): FinanceAuth | null {
   try {
@@ -50,6 +66,12 @@ interface FinanceStore {
   payingInsId: number | null
   payError: string | null
   hideAmounts: boolean
+  categories: Category[] | null
+  expenses: ExpensesData | null
+  expensesLoading: boolean
+  expensesError: string | null
+  expenseFilter: ExpenseFilter
+  addingExpense: boolean
   payInstallment: (installmentId: number) => Promise<void>
   toggleHideAmounts: () => void
   setTab: (tab: FinanceTab) => void
@@ -60,6 +82,10 @@ interface FinanceStore {
   openCredit: (id: number) => void
   closeCredit: () => void
   fetchCreditDetails: () => Promise<void>
+  fetchCategories: () => Promise<void>
+  fetchExpenses: () => Promise<void>
+  setExpenseFilter: (patch: Partial<ExpenseFilter>) => void
+  addExpense: (payload: NewExpense) => Promise<boolean>
 }
 
 export const useFinanceStore = create<FinanceStore>((set, get) => ({
@@ -78,6 +104,12 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
   payingInsId: null,
   payError: null,
   hideAmounts: localStorage.getItem(HIDE_KEY) === '1',
+  categories: null,
+  expenses: null,
+  expensesLoading: false,
+  expensesError: null,
+  expenseFilter: defaultExpenseFilter,
+  addingExpense: false,
 
   payInstallment: async installmentId => {
     set({ payingInsId: installmentId, payError: null })
@@ -130,6 +162,9 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
       selectedCreditId: null,
       creditDetails: null,
       detailError: null,
+      expenses: null,
+      expensesError: null,
+      expenseFilter: defaultExpenseFilter,
     })
   },
 
@@ -179,6 +214,55 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
         detailLoading: false,
         detailError: e instanceof Error ? e.message : 'Kredi detayı alınamadı',
       })
+    }
+  },
+
+  fetchCategories: async () => {
+    // Kategoriler nadiren değişir — bir kez çekildiyse tekrar isteme
+    if (get().categories) return
+    try {
+      const categories = await getCategoriesRequest()
+      set({ categories: categories ?? [] })
+    } catch {
+      // Kategori listesi kritik değil — filtre yine de çalışır, sessizce geç
+    }
+  },
+
+  fetchExpenses: async () => {
+    set({ expensesLoading: true, expensesError: null })
+    try {
+      const expenses = await getExpensesRequest(get().expenseFilter)
+      set({ expenses, expensesLoading: false })
+    } catch (e) {
+      set({
+        expensesLoading: false,
+        expensesError: e instanceof Error ? e.message : 'Harcamalar alınamadı',
+      })
+    }
+  },
+
+  setExpenseFilter: patch => {
+    set(s => ({ expenseFilter: { ...s.expenseFilter, ...patch } }))
+    void get().fetchExpenses()
+  },
+
+  addExpense: async payload => {
+    set({ addingExpense: true })
+    try {
+      await addExpenseRequest(payload)
+      set({ addingExpense: false })
+      useToastStore.getState().show('Harcama eklendi ✅', 'success')
+      // Liste ve dashboard (bakiye/özet) bayatladı — tazele
+      void get().fetchExpenses()
+      void get().fetchDashboard()
+      return true
+    } catch (e) {
+      set({ addingExpense: false })
+      useToastStore.getState().show(
+        e instanceof Error ? e.message : 'Harcama eklenemedi',
+        'error',
+      )
+      return false
     }
   },
 }))

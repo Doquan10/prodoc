@@ -1,11 +1,16 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type DragEvent } from 'react'
 import { useQueueStore } from '../../store/useQueueStore'
 import { usePlanStore } from '../../store/usePlanStore'
+import { useToastStore } from '../../store/useToastStore'
 import {
   todayStr, toDateStr, diffDays, fullDateLabel, relativeDayLabel,
   formatMinutes, MONTHS_LONG, WEEKDAYS_SHORT,
 } from '../../utils/format'
 import type { CuriosityItem } from '../../types'
+
+// Tarihsiz görev havuzu için ayrılmış plan anahtarı (gerçek tarih değil)
+const BACKLOG = 'backlog'
+type DragPayload = { type: 'item' | 'task'; id: string }
 
 function monthGrid(year: number, month0: number): string[] {
   const first = new Date(year, month0, 1)
@@ -27,7 +32,8 @@ export default function PlanView() {
   const inlineNoteRef = useRef('')
   const inlineNoteTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const plans = usePlanStore(s => s.plans)
-  const { getPlan, addToPlan, removeFromPlan, addMust, removeMust, toggleMust } = usePlanStore()
+  const { getPlan, addToPlan, removeFromPlan, addMust, removeMust, toggleMust, moveMust } = usePlanStore()
+  const showToast = useToastStore(s => s.show)
 
   const today = todayStr()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -38,6 +44,9 @@ export default function PlanView() {
   const [mustMinutes, setMustMinutes] = useState('')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerSearch, setPickerSearch] = useState('')
+  const [backlogInput, setBacklogInput] = useState('')
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null)
+  const dragData = useRef<DragPayload | null>(null)
 
   const viewD = new Date(viewDate + 'T00:00:00')
   const year = viewD.getFullYear()
@@ -52,6 +61,53 @@ export default function PlanView() {
 
   function shiftMonth(delta: number) {
     setViewDate(toDateStr(new Date(year, month0 + delta, 1)))
+  }
+
+  // ── Backlog + sürükle-bırak ─────────────────
+  const backlogPlan = getPlan(BACKLOG)
+  const backlogTasks = backlogPlan.mustItems
+  const backlogItems = items
+    .filter(i => ['inbox', 'refined', 'revisit'].includes(i.status))
+    .sort((a, b) => b.priority - a.priority)
+
+  function addBacklogTask() {
+    if (!backlogInput.trim()) return
+    addMust(BACKLOG, { text: backlogInput.trim() })
+    setBacklogInput('')
+  }
+
+  function onDragStart(e: DragEvent, payload: DragPayload) {
+    dragData.current = payload
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', payload.id)
+  }
+
+  const canDrop = (dateStr: string) => dateStr >= today
+
+  function onDayDragOver(e: DragEvent, dateStr: string) {
+    if (!dragData.current || !canDrop(dateStr)) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dragOverDate !== dateStr) setDragOverDate(dateStr)
+  }
+
+  function onDayDrop(e: DragEvent, dateStr: string) {
+    e.preventDefault()
+    const data = dragData.current
+    dragData.current = null
+    setDragOverDate(null)
+    if (!data || !canDrop(dateStr)) return
+    if (data.type === 'item') {
+      addToPlan(dateStr, data.id)
+      const it = getItem(data.id)
+      if (it && it.status !== 'learned' && it.status !== 'in_progress') {
+        updateItem(data.id, { status: 'scheduled', scheduledDate: dateStr })
+      }
+      showToast(`Konu ${relativeDayLabel(dateStr)} gününe planlandı`, 'success')
+    } else {
+      moveMust(BACKLOG, dateStr, data.id)
+      showToast(`Görev ${relativeDayLabel(dateStr)} gününe taşındı`, 'success')
+    }
   }
 
   function openDay(dateStr: string) {
@@ -115,6 +171,16 @@ export default function PlanView() {
     }
   }
 
+  /** Konuyu günün planından çıkarır ve planlama izini de temizler (Queue'da "Planlandı" kalmasın). */
+  function removeItemFromDay(item: CuriosityItem) {
+    if (!selectedDate) return
+    removeFromPlan(selectedDate, item.id)
+    const changes: Partial<CuriosityItem> = {}
+    if (item.status === 'scheduled') changes.status = 'refined'
+    if (item.scheduledDate === selectedDate) changes.scheduledDate = undefined
+    if (Object.keys(changes).length) updateItem(item.id, changes)
+  }
+
   function submitMust() {
     if (!selectedDate || !mustInput.trim()) return
     addMust(selectedDate, {
@@ -153,8 +219,8 @@ export default function PlanView() {
     <div className="view-container plan-view">
       <div className="view-header">
         <div>
-          <h1 className="view-title">Takvim</h1>
-          <p className="view-subtitle">Günlere tıklayarak plan oluştur</p>
+          <h1 className="view-title">Planla</h1>
+          <p className="view-subtitle">Konuları ve görevleri günlere sürükleyerek planla</p>
         </div>
         <input
           className="input plan-jump"
@@ -165,8 +231,9 @@ export default function PlanView() {
         />
       </div>
 
-      {/* Takvim — tek kolon, tam genişlik */}
-      <div className="calendar-card">
+      <div className="plan-layout">
+        {/* Aylık takvim */}
+        <div className="calendar-card">
         <div className="calendar-nav">
           <button className="btn btn-ghost cal-arrow" onClick={() => shiftMonth(-1)}>‹</button>
           <span className="calendar-month-label">{MONTHS_LONG[month0]} {year}</span>
@@ -178,7 +245,7 @@ export default function PlanView() {
           {WEEKDAYS_SHORT.map(w => <span key={w} className="calendar-weekday">{w}</span>)}
         </div>
 
-        <div className="calendar-grid">
+        <div className="calendar-grid" onDragLeave={() => setDragOverDate(null)}>
           {grid.map(dateStr => {
             const d = new Date(dateStr + 'T00:00:00')
             const inMonth = d.getMonth() === month0
@@ -189,15 +256,90 @@ export default function PlanView() {
               dateStr === today ? 'today' : '',
               dateStr === selectedDate ? 'selected' : '',
               dateStr < today ? 'past' : '',
+              dragOverDate === dateStr ? 'drop-target' : '',
             ].filter(Boolean).join(' ')
             return (
-              <button key={dateStr} className={cls} onClick={() => openDay(dateStr)}>
+              <button
+                key={dateStr}
+                className={cls}
+                onClick={() => openDay(dateStr)}
+                onDragOver={e => onDayDragOver(e, dateStr)}
+                onDragLeave={() => setDragOverDate(d => (d === dateStr ? null : d))}
+                onDrop={e => onDayDrop(e, dateStr)}
+              >
                 <span className="calendar-day-num">{d.getDate()}</span>
-                {count > 0 && <span className="calendar-day-badge" />}
+                {count > 0 && <span className="calendar-day-count">{count}</span>}
               </button>
             )
           })}
         </div>
+        </div>
+
+        {/* Sağ panel — bir güne sürüklenecek konular ve görevler */}
+        <aside className="plan-backlog">
+          <section className="backlog-section">
+            <div className="backlog-head">
+              <span className="backlog-title">🔍 Araştırılacak Konular</span>
+              <span className="fin-count">{backlogItems.length}</span>
+            </div>
+            {backlogItems.length === 0 ? (
+              <p className="backlog-empty">Planlanacak konu yok.</p>
+            ) : (
+              <div className="backlog-list">
+                {backlogItems.map(i => (
+                  <div
+                    key={i.id}
+                    className="backlog-card"
+                    draggable
+                    onDragStart={e => onDragStart(e, { type: 'item', id: i.id })}
+                    onDragEnd={() => setDragOverDate(null)}
+                  >
+                    <span className="backlog-card-q">{i.question}</span>
+                    <div className="backlog-card-meta">
+                      {i.tags.slice(0, 2).map(t => <span key={t} className="badge badge-category">{t}</span>)}
+                      {i.estimatedMinutes && <span className="badge badge-time">{formatMinutes(i.estimatedMinutes)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="backlog-section">
+            <div className="backlog-head">
+              <span className="backlog-title">✅ Yapılacaklar</span>
+              <span className="fin-count">{backlogTasks.length}</span>
+            </div>
+            {backlogTasks.length > 0 && (
+              <div className="backlog-list">
+                {backlogTasks.map(t => (
+                  <div
+                    key={t.id}
+                    className="backlog-card task"
+                    draggable
+                    onDragStart={e => onDragStart(e, { type: 'task', id: t.id })}
+                    onDragEnd={() => setDragOverDate(null)}
+                  >
+                    <span className="backlog-card-q">{t.text}</span>
+                    <button className="action-btn danger" onClick={() => removeMust(BACKLOG, t.id)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="backlog-add">
+              <input
+                className="input"
+                placeholder="Yeni görev…"
+                value={backlogInput}
+                onChange={e => setBacklogInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addBacklogTask() }}
+              />
+              <button className="btn btn-primary" onClick={addBacklogTask} disabled={!backlogInput.trim()}>+ Ekle</button>
+            </div>
+          </section>
+
+          <p className="backlog-hint">Bir kartı takvimde bir güne sürükleyerek planla.</p>
+        </aside>
       </div>
 
       {/* Gün modalı */}
@@ -267,7 +409,7 @@ export default function PlanView() {
                         title="Not al"
                         onClick={() => openInlineNote(item)}
                       >📝</button>
-                      {!isPast && <button className="action-btn danger" onClick={() => removeFromPlan(selectedDate, item.id)}>×</button>}
+                      {!isPast && <button className="action-btn danger" onClick={() => removeItemFromDay(item)}>×</button>}
                     </div>
                     {expandedItemId === item.id && (
                       <textarea
