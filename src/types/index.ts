@@ -72,7 +72,10 @@ export interface Writing {
   kind: WritingKind // 'category' → içine kategori/yazı alır; 'note' → markdown belge (yaprak)
   icon?: string // kategori için seçilen emoji simge (yoksa varsayılan klasör glyph'i)
   title: string
-  content: string // markdown (yalnızca note için anlamlı)
+  content?: string // markdown (yalnızca note için anlamlı); ÖZET listede gelmez, detay yüklenince dolar
+  excerpt?: string // liste kartı için sunucuda kırpılmış düz metin (content yerine)
+  hasDocuments?: boolean // özet: döküman var mı (tam döküman listesi detay yüklenince gelir)
+  loaded?: boolean // tam gövde (content + documents) yüklendi mi — false ise content/documents kaydedilmez
   documents?: DocLink[] // sağ paneldeki sıralı referans bağlantıları
   createdAt: string // ISO
   updatedAt: string // ISO

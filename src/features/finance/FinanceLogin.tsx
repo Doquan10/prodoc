@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { useFinanceStore } from '../../store/useFinanceStore'
+import { useAuthStore } from '../../store/useAuthStore'
 import Button from '../../common/Button'
 import Input from '../../common/Input'
 
 export default function FinanceLogin() {
-  const login = useFinanceStore(s => s.login)
-  const loading = useFinanceStore(s => s.loading)
-  const error = useFinanceStore(s => s.error)
+  const login = useAuthStore(s => s.login)
+  const loading = useAuthStore(s => s.loading)
+  const error = useAuthStore(s => s.error)
   const [identity, setIdentity] = useState('')
   const [password, setPassword] = useState('')
 
@@ -20,10 +20,10 @@ export default function FinanceLogin() {
     <div className="finance-login-container">
       <form className="finance-login-card" onSubmit={submit}>
         <div className="fin-login-head">
-          <span className="fin-login-mark">₺</span>
+          <span className="fin-login-mark">◈</span>
           <div>
-            <h1 className="fin-login-title">Finans</h1>
-            <p className="fin-login-sub">Finansal yönetimine giriş yap</p>
+            <h1 className="fin-login-title">PLOS</h1>
+            <p className="fin-login-sub">Hesabına giriş yap</p>
           </div>
         </div>
         <Input

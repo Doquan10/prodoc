@@ -198,6 +198,21 @@ body {
   animation: pulse 2s infinite;
 }
 
+/* Verisi hâlâ mock backend'de olan menüler için uyarı rozeti (migrasyon bitince kaldır) */
+.sidebar-mock-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 999px;
+}
+
 .sidebar-footer {
   padding: 12px 8px 16px;
   border-top: 1px solid var(--border);
@@ -1646,7 +1661,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 78vh;
+  width: 100%;
+  min-height: 100vh;
   padding: 28px;
   background: radial-gradient(560px 280px at 50% 0%, rgba(77, 120, 245, 0.06), transparent 70%);
 }
@@ -1709,37 +1725,38 @@ body {
 .fin-hero {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 24px;
+  gap: 22px;
+  padding: 26px 28px;
   border: 1px solid var(--ac-brd);
-  border-radius: 14px;
+  border-radius: 20px;
   background:
-    radial-gradient(420px 200px at 0% 0%, rgba(77, 120, 245, 0.14), transparent 65%),
-    linear-gradient(180deg, var(--bg-3), var(--bg-2));
+    radial-gradient(520px 240px at 8% -10%, rgba(77, 120, 245, 0.20), transparent 60%),
+    radial-gradient(420px 300px at 100% 120%, rgba(107, 142, 247, 0.10), transparent 60%),
+    linear-gradient(165deg, var(--bg-3), var(--bg-2));
+  box-shadow: 0 12px 32px -18px rgba(77, 120, 245, 0.55);
 }
 
 .fin-hero-label {
-  font-family: var(--ff-mono);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
+  font-family: var(--ff-sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--tx-2);
 }
 
 .fin-hero-value {
   font-family: var(--ff-mono);
-  font-size: 34px;
+  font-size: 40px;
   font-weight: 700;
-  letter-spacing: -1px;
+  letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--tx-1);
-  margin-top: 6px;
+  margin-top: 4px;
 }
 
 .fin-hero-metrics {
   display: flex;
-  border-top: 1px solid var(--border);
-  padding-top: 16px;
+  gap: 10px;
 }
 
 .fin-metric {
@@ -1754,25 +1771,40 @@ body {
 .fin-metric:first-child { padding-left: 0; border-left: none; }
 
 .fin-metric-label {
-  font-family: var(--ff-mono);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--tx-3);
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--tx-2);
   white-space: nowrap;
 }
 
 .fin-metric-value {
   font-family: var(--ff-mono);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--tx-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .fin-metric-value.highlight { color: var(--ac-h); }
+
+/* Hero'da metrikler bölücü çizgi yerine mini-kart olur (fintech hiyerarşi) */
+.fin-hero-metrics .fin-metric {
+  padding: 12px 14px;
+  border-left: none;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  border: 1px solid var(--border);
+}
+.fin-hero-metrics .fin-metric-value { font-size: 17px; }
+/* Vurgulu metrik (Bu Ay Ödenecek) accent zeminiyle öne çıkar */
+.fin-hero-metrics .fin-metric:has(.highlight) {
+  background: var(--ac-bg);
+  border-color: var(--ac-brd);
+}
 
 /* Kart / bölüm */
 .fin-card {
@@ -1781,32 +1813,33 @@ body {
   gap: 16px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 20px;
+  border-radius: 18px;
+  padding: 22px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -18px rgba(0, 0, 0, 0.5);
 }
 
 .fin-card-head { display: flex; align-items: center; justify-content: space-between; }
 
 .fin-card-title {
-  font-family: var(--ff-mono);
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1.5px;
-  color: var(--tx-2);
+  font-family: var(--ff-sans);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--tx-1);
 }
 
 .fin-count {
   font-family: var(--ff-mono);
-  font-size: 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--tx-2);
   background: var(--bg-3);
   border: 1px solid var(--border);
-  padding: 2px 9px;
+  padding: 3px 11px;
   border-radius: 999px;
 }
 
-.fin-empty { color: var(--tx-3); font-size: 12px; padding: 12px 0; }
+.fin-empty { color: var(--tx-3); font-size: 13px; padding: 12px 0; }
 
 /* Trend grafiği */
 .fin-chart-wrap { position: relative; height: 170px; }
@@ -1907,39 +1940,43 @@ body {
 .fin-row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 2px;
+  gap: 13px;
+  padding: 11px 8px;
+  margin: 0 -8px;
+  border-radius: 12px;
   border-bottom: 1px solid var(--border);
+  transition: background 0.12s;
 }
-.fin-row:last-child { border-bottom: none; padding-bottom: 2px; }
-.fin-row:first-child { padding-top: 2px; }
+.fin-row:last-child { border-bottom: none; }
+.fin-row:hover { background: color-mix(in srgb, var(--tx-1) 4%, transparent); }
 
 .fin-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border-radius: 10px;
-  background: var(--ac-bg);
-  border: 1px solid var(--ac-brd);
-  color: var(--ac-h);
-  font-family: var(--ff-mono);
-  font-size: 14px;
+  border-radius: 12px;
+  /* Kategori rengi JSX'ten --fin-avatar-c olarak gelir; yoksa accent'e düşer */
+  background: color-mix(in srgb, var(--fin-avatar-c, var(--ac)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--fin-avatar-c, var(--ac)) 30%, transparent);
+  color: var(--fin-avatar-c, var(--ac-h));
+  font-family: var(--ff-sans);
+  font-size: 15px;
   font-weight: 700;
 }
 
 .fin-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .fin-row-name {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--tx-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.fin-row-sub { font-size: 11px; color: var(--tx-3); font-family: var(--ff-mono); }
+.fin-row-sub { font-size: 12px; color: var(--tx-3); font-family: var(--ff-sans); }
 
 .fin-row-right {
   margin-left: auto;
@@ -1949,16 +1986,48 @@ body {
   gap: 4px;
   flex-shrink: 0;
 }
-.fin-row-amount { font-family: var(--ff-mono); font-size: 13px; font-weight: 700; color: var(--tx-1); }
+.fin-row-amount {
+  font-family: var(--ff-mono);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx-1);
+}
+
+.fin-row-del {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  color: var(--tx-3);
+  opacity: 0.6;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.fin-row:hover .fin-row-del { opacity: 1; }
+.fin-row-del:hover { background: var(--bg-2); color: #e5484d; opacity: 1; }
+.fin-row-del-confirm { display: flex; gap: 6px; }
+.fin-row-del.confirm {
+  opacity: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--danger, #e5484d);
+}
+.fin-row-del.cancel { opacity: 1; font-size: 12px; }
+.fin-row-del-hint { font-size: 12px; color: var(--tx-3); }
 
 .fin-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 2px 9px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-family: var(--ff-mono);
-  font-size: 10px;
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  font-weight: 600;
 }
 .fin-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
 .fin-pill.delayed { color: #e46a6a; background: rgba(201, 53, 53, 0.10); }
@@ -1976,44 +2045,51 @@ body {
   padding: 3px;
 }
 .fin-tab {
-  padding: 6px 18px;
+  padding: 7px 20px;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--tx-2);
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.5px;
+  font-family: var(--ff-sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
 }
 .fin-tab:hover { color: var(--tx-1); }
-.fin-tab.active { background: var(--ac-bg); color: var(--ac-h); }
+.fin-tab.active {
+  background: var(--ac);
+  color: #fff;
+  box-shadow: 0 2px 8px -2px rgba(77, 120, 245, 0.6);
+}
 
 /* Mini özet kartları */
-.fin-mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fin-mini-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .fin-mini {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px 16px;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -18px rgba(0, 0, 0, 0.5);
 }
 .fin-mini-label {
-  font-family: var(--ff-mono);
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--tx-3);
+  font-family: var(--ff-sans);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--tx-2);
   white-space: nowrap;
 }
 .fin-mini-value {
   font-family: var(--ff-mono);
-  font-size: 16px;
+  font-size: 22px;
   font-weight: 700;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--tx-1);
   white-space: nowrap;
   overflow: hidden;
@@ -2024,7 +2100,90 @@ body {
 .fin-credits-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 
 .fin-expense-filters { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.fin-expense-toolbar-right { display: flex; align-items: center; gap: 10px; }
+.fin-expense-toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* Hızlı ekle — sık harcanan kalemler */
+.fin-quick { display: flex; flex-direction: column; gap: 8px; }
+.fin-quick-label { font-family: var(--ff-sans); font-size: 12px; font-weight: 600; color: var(--tx-2); }
+.fin-quick-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.fin-quick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 8px 13px;
+  border-radius: 999px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.06s;
+}
+.fin-quick-chip:hover { border-color: var(--ac-brd); background: var(--bg-3); }
+.fin-quick-chip:active { transform: scale(0.97); }
+.fin-quick-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fin-quick-name { font-size: 13px; font-weight: 600; color: var(--tx-1); white-space: nowrap; }
+.fin-quick-amt {
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx-2);
+}
+
+/* Harcama takvimi */
+.fin-cal { display: flex; flex-direction: column; gap: 6px; }
+.fin-cal-weekdays, .fin-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.fin-cal-weekday {
+  text-align: center;
+  font-family: var(--ff-sans);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tx-3);
+}
+.fin-cal-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.fin-cal-day:hover { border-color: var(--ac-brd); }
+.fin-cal-day.other-month { opacity: 0.4; }
+.fin-cal-day.today { border-color: var(--ac); }
+.fin-cal-day.has { background: var(--ac-bg); border-color: var(--ac-brd); }
+.fin-cal-day-num {
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--tx-2);
+}
+.fin-cal-day.today .fin-cal-day-num { color: var(--ac-h); font-weight: 700; }
+.fin-cal-day-total {
+  align-self: flex-end;
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ac-h);
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100%;
+  text-overflow: ellipsis;
+}
+
+/* Gün modalı */
+.fin-day-modal { display: flex; flex-direction: column; gap: 12px; }
 
 .fin-expense-form { display: flex; flex-direction: column; gap: 14px; }
 .fin-expense-form .fin-form-row { display: flex; gap: 12px; }
@@ -2326,6 +2485,14 @@ body {
 .writing-card-title { font-size: 14px; font-weight: 600; color: var(--tx-1); }
 .writing-card-date { font-family: var(--ff-mono); font-size: 10px; color: var(--tx-3); flex-shrink: 0; }
 .writing-card-excerpt { font-size: 12px; color: var(--tx-2); line-height: 1.5; }
+.writing-unloaded {
+  border: 1px dashed var(--bd);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--bg-2);
+}
+.writing-unloaded-note { font-size: 12px; color: var(--tx-3); line-height: 1.5; margin: 0; }
+.writing-unloaded-excerpt { font-size: 14px; color: var(--tx-2); line-height: 1.6; margin: 12px 0 0; white-space: pre-wrap; }
 .writing-card-item {
   font-family: var(--ff-mono);
   font-size: 10px;
@@ -3103,12 +3270,17 @@ body {
 
 @media (max-width: 720px) {
   .fin-hero { padding: 20px; }
-  .fin-hero-value { font-size: 26px; }
-  .fin-hero-metrics { flex-wrap: wrap; gap: 12px 0; }
-  .fin-metric { flex-basis: 50%; padding: 0 12px; }
-  .fin-metric:nth-child(odd) { padding-left: 0; border-left: none; }
+  .fin-hero-value { font-size: 30px; }
+  .fin-hero-metrics { flex-wrap: wrap; gap: 8px; }
+  .fin-hero-metrics .fin-metric { flex-basis: calc(50% - 4px); }
   .fin-mini-grid { grid-template-columns: 1fr; }
   .fin-credit-amounts { flex-wrap: wrap; gap: 12px 0; }
+  .fin-credit-amounts .fin-metric { flex-basis: 50%; padding: 0 12px; }
+  .fin-credit-amounts .fin-metric:nth-child(odd) { padding-left: 0; border-left: none; }
+  .fin-cal-weekdays, .fin-cal-grid { gap: 4px; }
+  .fin-cal-day { padding: 4px; border-radius: 8px; }
+  .fin-cal-day-num { font-size: 11px; }
+  .fin-cal-day-total { font-size: 9px; }
 }
 
 /* ── Mobil (telefon / dar ekran) ──────────── */
@@ -3157,6 +3329,23 @@ body {
     top: 6px;
     left: calc(50% + 8px);
     margin-left: 0;
+  }
+  /* Alt çubukta "demo" metin rozeti dikey düzeni bozuyor — küçük uyarı noktasına indir */
+  .sidebar-mock-badge {
+    position: absolute;
+    top: 5px;
+    left: calc(50% - 13px);
+    width: 6px;
+    height: 6px;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 50%;
+    background: var(--warn);
+    color: transparent;
+    font-size: 0;
+    line-height: 0;
+    overflow: hidden;
   }
 
   /* "Merak Ekle" → yüzen (+) buton */

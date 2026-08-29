@@ -1,18 +1,19 @@
 import { create } from 'zustand'
 import {
-  bindFinanceAuth,
-  loginRequest,
   getDashboardRequest,
   getCreditsRequest,
   getCreditDetailsRequest,
   payInstallmentRequest,
   getCategoriesRequest,
   getExpensesRequest,
+  getDashboardExpensesRequest,
   addExpenseRequest,
+  updateExpenseRequest,
+  deleteExpenseRequest,
 } from '../api/financeApi'
 import { useToastStore } from './useToastStore'
+import { useAuthStore } from './useAuthStore'
 import type {
-  FinanceAuth,
   FinanceDashboardData,
   CreditListItem,
   CreditDetails,
@@ -20,9 +21,9 @@ import type {
   ExpensesData,
   ExpenseFilter,
   NewExpense,
+  EditExpense,
 } from '../types/finance'
 
-const STORAGE_KEY = 'plos_finance_auth'
 const HIDE_KEY = 'plos_finance_hide'
 
 export type FinanceTab = 'dashboard' | 'credits' | 'expenses'
@@ -36,26 +37,14 @@ const defaultExpenseFilter: ExpenseFilter = {
   year: now.getFullYear(),
 }
 
-function loadAuth(): FinanceAuth | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as FinanceAuth) : null
-  } catch {
-    return null
-  }
-}
-
-function saveAuth(auth: FinanceAuth | null) {
-  if (auth) localStorage.setItem(STORAGE_KEY, JSON.stringify(auth))
-  else localStorage.removeItem(STORAGE_KEY)
-}
-
 interface FinanceStore {
-  auth: FinanceAuth | null
   tab: FinanceTab
   dashboard: FinanceDashboardData | null
   loading: boolean
   error: string | null
+  todayExpenses: ExpensesData | null
+  todayExpensesLoading: boolean
+  todayExpensesError: string | null
   credits: CreditListItem[] | null
   creditsLoading: boolean
   creditsError: string | null
@@ -72,12 +61,13 @@ interface FinanceStore {
   expensesError: string | null
   expenseFilter: ExpenseFilter
   addingExpense: boolean
+  updatingExpense: boolean
+  deletingExpenseId: number | null
   payInstallment: (installmentId: number) => Promise<void>
   toggleHideAmounts: () => void
   setTab: (tab: FinanceTab) => void
-  login: (identity: string, password: string) => Promise<void>
-  logout: () => void
   fetchDashboard: () => Promise<void>
+  fetchTodayExpenses: () => Promise<void>
   fetchCredits: () => Promise<void>
   openCredit: (id: number) => void
   closeCredit: () => void
@@ -86,14 +76,18 @@ interface FinanceStore {
   fetchExpenses: () => Promise<void>
   setExpenseFilter: (patch: Partial<ExpenseFilter>) => void
   addExpense: (payload: NewExpense) => Promise<boolean>
+  updateExpense: (payload: EditExpense) => Promise<boolean>
+  deleteExpense: (id: number) => Promise<void>
 }
 
 export const useFinanceStore = create<FinanceStore>((set, get) => ({
-  auth: loadAuth(),
   tab: 'dashboard',
   dashboard: null,
   loading: false,
   error: null,
+  todayExpenses: null,
+  todayExpensesLoading: false,
+  todayExpensesError: null,
   credits: null,
   creditsLoading: false,
   creditsError: null,
@@ -110,6 +104,8 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
   expensesError: null,
   expenseFilter: defaultExpenseFilter,
   addingExpense: false,
+  updatingExpense: false,
+  deletingExpenseId: null,
 
   payInstallment: async installmentId => {
     set({ payingInsId: installmentId, payError: null })
@@ -138,36 +134,6 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
 
   setTab: tab => set({ tab }),
 
-  login: async (identity, password) => {
-    set({ loading: true, error: null })
-    try {
-      const auth = await loginRequest(identity, password)
-      saveAuth(auth)
-      set({ auth, loading: false })
-      void get().fetchDashboard()
-    } catch (e) {
-      set({ loading: false, error: e instanceof Error ? e.message : 'Giriş başarısız' })
-    }
-  },
-
-  logout: () => {
-    saveAuth(null)
-    set({
-      auth: null,
-      tab: 'dashboard',
-      dashboard: null,
-      credits: null,
-      error: null,
-      creditsError: null,
-      selectedCreditId: null,
-      creditDetails: null,
-      detailError: null,
-      expenses: null,
-      expensesError: null,
-      expenseFilter: defaultExpenseFilter,
-    })
-  },
-
   fetchDashboard: async () => {
     set({ loading: true, error: null })
     try {
@@ -175,6 +141,19 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
       set({ dashboard, loading: false })
     } catch (e) {
       set({ loading: false, error: e instanceof Error ? e.message : 'Veriler alınamadı' })
+    }
+  },
+
+  fetchTodayExpenses: async () => {
+    set({ todayExpensesLoading: true, todayExpensesError: null })
+    try {
+      const todayExpenses = await getDashboardExpensesRequest()
+      set({ todayExpenses, todayExpensesLoading: false })
+    } catch (e) {
+      set({
+        todayExpensesLoading: false,
+        todayExpensesError: e instanceof Error ? e.message : 'Bugünkü harcamalar alınamadı',
+      })
     }
   },
 
@@ -252,9 +231,10 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
       await addExpenseRequest(payload)
       set({ addingExpense: false })
       useToastStore.getState().show('Harcama eklendi ✅', 'success')
-      // Liste ve dashboard (bakiye/özet) bayatladı — tazele
+      // Liste ve dashboard (bakiye/özet + bugünkü harcamalar) bayatladı — tazele
       void get().fetchExpenses()
       void get().fetchDashboard()
+      void get().fetchTodayExpenses()
       return true
     } catch (e) {
       set({ addingExpense: false })
@@ -265,16 +245,68 @@ export const useFinanceStore = create<FinanceStore>((set, get) => ({
       return false
     }
   },
+
+  updateExpense: async payload => {
+    set({ updatingExpense: true })
+    try {
+      await updateExpenseRequest(payload)
+      set({ updatingExpense: false })
+      useToastStore.getState().show('Harcama güncellendi ✏️', 'success')
+      // Liste ve dashboard (bakiye/özet + bugünkü harcamalar) bayatladı — tazele
+      void get().fetchExpenses()
+      void get().fetchDashboard()
+      void get().fetchTodayExpenses()
+      return true
+    } catch (e) {
+      set({ updatingExpense: false })
+      useToastStore.getState().show(
+        e instanceof Error ? e.message : 'Harcama güncellenemedi',
+        'error',
+      )
+      return false
+    }
+  },
+
+  deleteExpense: async id => {
+    set({ deletingExpenseId: id })
+    try {
+      await deleteExpenseRequest(id)
+      set({ deletingExpenseId: null })
+      useToastStore.getState().show('Harcama silindi 🗑️', 'success')
+      // Liste ve dashboard (bakiye/özet + bugünkü harcamalar) bayatladı — tazele
+      void get().fetchExpenses()
+      void get().fetchDashboard()
+      void get().fetchTodayExpenses()
+    } catch (e) {
+      set({ deletingExpenseId: null })
+      useToastStore.getState().show(
+        e instanceof Error ? e.message : 'Harcama silinemedi',
+        'error',
+      )
+    }
+  },
 }))
 
-bindFinanceAuth({
-  getToken: () => useFinanceStore.getState().auth?.token ?? null,
-  onTokenRefreshed: token => {
-    const auth = useFinanceStore.getState().auth
-    if (!auth) return
-    const next = { ...auth, token }
-    saveAuth(next)
-    useFinanceStore.setState({ auth: next })
-  },
-  onAuthExpired: () => useFinanceStore.getState().logout(),
+// Auth artık useAuthStore'da — finance verisi onun durumuna abone olur:
+// giriş yapılınca dashboard'ı çek, çıkışta (veya oturum düşünce) veriyi temizle.
+useAuthStore.subscribe((s, prev) => {
+  if (s.auth && !prev.auth) {
+    void useFinanceStore.getState().fetchDashboard()
+  } else if (!s.auth && prev.auth) {
+    useFinanceStore.setState({
+      tab: 'dashboard',
+      dashboard: null,
+      credits: null,
+      error: null,
+      creditsError: null,
+      selectedCreditId: null,
+      creditDetails: null,
+      detailError: null,
+      todayExpenses: null,
+      todayExpensesError: null,
+      expenses: null,
+      expensesError: null,
+      expenseFilter: defaultExpenseFilter,
+    })
+  }
 })

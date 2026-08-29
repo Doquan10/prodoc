@@ -4,6 +4,7 @@ import { useWritingStore } from '../../store/useWritingStore'
 import { useQueueStore } from '../../store/useQueueStore'
 import { useUIStore } from '../../store/useUIStore'
 import { useToastStore } from '../../store/useToastStore'
+import { stripMarkdown } from '../../utils/markdown'
 import RichTextEditor from './RichTextEditor'
 
 interface Props {
@@ -33,7 +34,7 @@ function hostOf(url: string): string {
 
 export default function WritingEditor({ writingId }: Props) {
   const writings = useWritingStore(s => s.writings)
-  const { getWriting, updateWriting, deleteWriting } = useWritingStore()
+  const { getWriting, updateWriting, deleteWriting, loadWriting } = useWritingStore()
   const { getItem } = useQueueStore()
   const { closeWriting, selectItem, openWriting } = useUIStore()
   const showToast = useToastStore(s => s.show)
@@ -53,8 +54,11 @@ export default function WritingEditor({ writingId }: Props) {
     const w = useWritingStore.getState().getWriting(writingId)
     if (!w) return
     const { title, content } = draftRef.current
-    if (title === w.title && content === w.content) return
-    updateWriting(writingId, { title, content })
+    const changes: Partial<Pick<Writing, 'title' | 'content'>> = {}
+    if (title !== w.title) changes.title = title
+    // İçerik yalnızca tam gövde yüklüyken kaydedilir — özet '' gerçek içeriği ezmesin
+    if (w.loaded && content !== w.content) changes.content = content
+    if (Object.keys(changes).length) updateWriting(writingId, changes)
   }
 
   function handleChange(changes: Partial<{ title: string; content: string }>) {
@@ -69,13 +73,22 @@ export default function WritingEditor({ writingId }: Props) {
     }, 600)
   }
 
-  // Unmount'ta bekleyen taslağı kaydet
+  // Açılışta tam gövdeyi (content + documents) çek — özet listede content yok.
+  // loadWriting içeride loaded/uçuş kontrolü yapar; yüklenince store patch'lenir,
+  // WritingsView key'i değişir ve bu editör dolu içerikle remount olur.
+  useEffect(() => {
+    loadWriting(writingId)
+  }, [writingId, loadWriting])
+
+  // Unmount'ta bekleyen taslağı kaydet (content yalnızca tam gövde yüklüyse)
   useEffect(() => () => {
     clearTimeout(timer.current)
     const w = useWritingStore.getState().getWriting(writingId)
-    if (w && (draftRef.current.title !== w.title || draftRef.current.content !== w.content)) {
-      useWritingStore.getState().updateWriting(writingId, draftRef.current)
-    }
+    if (!w) return
+    const changes: Partial<Pick<Writing, 'title' | 'content'>> = {}
+    if (draftRef.current.title !== w.title) changes.title = draftRef.current.title
+    if (w.loaded && draftRef.current.content !== w.content) changes.content = draftRef.current.content
+    if (Object.keys(changes).length) useWritingStore.getState().updateWriting(writingId, changes)
   }, [writingId])
 
   if (!writing) {
@@ -93,6 +106,9 @@ export default function WritingEditor({ writingId }: Props) {
 
   const item = writing.itemId ? getItem(writing.itemId) : undefined
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0
+  // Özet listeden gelen yazıların tam gövdesi henüz yok (detay endpoint'i bekleniyor):
+  // içerik salt-okunur gösterilir, kayıt (content/documents) devre dışıdır.
+  const loaded = writing.loaded ?? false
 
   // Kök → ... → üst sayfa zinciri (döngüye karşı korumalı)
   const crumbs: Writing[] = []
@@ -249,18 +265,27 @@ export default function WritingEditor({ writingId }: Props) {
         onChange={e => handleChange({ title: e.target.value })}
       />
 
-      <RichTextEditor
-        value={writing.content ?? ''}
-        onChange={md => handleChange({ content: md })}
-        onBlur={commit}
-        placeholder={'Blog yazıyormuş gibi anlat…  "/" ile blok ekle (başlık, liste, yapılacak, kod…)'}
-      />
+      {loaded ? (
+        <RichTextEditor
+          value={writing.content ?? ''}
+          onChange={md => handleChange({ content: md })}
+          onBlur={commit}
+          placeholder={'Blog yazıyormuş gibi anlat…  "/" ile blok ekle (başlık, liste, yapılacak, kod…)'}
+        />
+      ) : (
+        <div className="writing-unloaded">
+          <p className="writing-unloaded-note">İçerik yükleniyor…</p>
+          {writing.excerpt && (
+            <p className="writing-unloaded-excerpt">{stripMarkdown(writing.excerpt)}…</p>
+          )}
+        </div>
+      )}
 
       <div className="writing-editor-footer">
         <span className={`notes-status ${saved ? '' : 'pending'}`}>
           {saved ? 'kaydedildi ✓' : 'yazılıyor…'}
         </span>
-        <span>{wordCount} kelime · yazdıkça biçimlenir</span>
+        <span>{loaded ? `${wordCount} kelime · yazdıkça biçimlenir` : 'içerik salt-okunur'}</span>
       </div>
         </div>
 
@@ -268,10 +293,16 @@ export default function WritingEditor({ writingId }: Props) {
         <aside className="writing-docs">
           <div className="writing-docs-head">
             <span className="writing-docs-title">Dökümanlar</span>
-            {documents.length > 0 && <span className="fin-count">{documents.length}</span>}
+            {loaded && documents.length > 0 && <span className="fin-count">{documents.length}</span>}
           </div>
 
-          {documents.length === 0 ? (
+          {!loaded ? (
+            <p className="writing-docs-empty">
+              {writing.hasDocuments
+                ? 'Dökümanlar yazının tam içeriği yüklenince görünür.'
+                : 'Döküman yok.'}
+            </p>
+          ) : documents.length === 0 ? (
             <p className="writing-docs-empty">Henüz bağlantı yok. Aşağıdan sırayla ekle.</p>
           ) : (
             <ol className="writing-docs-list">
@@ -292,6 +323,7 @@ export default function WritingEditor({ writingId }: Props) {
             </ol>
           )}
 
+          {loaded && (
           <div className="writing-docs-form">
             <input
               className="input"
@@ -311,6 +343,7 @@ export default function WritingEditor({ writingId }: Props) {
               + Ekle
             </button>
           </div>
+          )}
         </aside>
       </div>
     </div>

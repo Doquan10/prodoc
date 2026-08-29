@@ -39,9 +39,10 @@ export const DAYS_LONG = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşemb
 /** Haftanın Pazartesi'den başlayan kısa günleri (takvim başlığı için). */
 export const WEEKDAYS_SHORT = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
 
-export function formatDate(iso: string): string {
-  const [, m, d] = iso.split('-')
-  return `${parseInt(d)} ${MONTHS[parseInt(m) - 1]}`
+export function formatDate(iso: string, withYear = false): string {
+  const [y, m, d] = iso.split('-')
+  const base = `${parseInt(d)} ${MONTHS[parseInt(m) - 1]}`
+  return withYear ? `${base} ${y}` : base
 }
 
 /** 'YYYY-MM-DD' → yerel gece yarısı Date. 'Z' eklenmez ki saat dilimi kaymasın. */

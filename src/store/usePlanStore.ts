@@ -7,9 +7,17 @@ function emptyPlan(date: string): DailyPlan {
   return { date, itemIds: [], mustItems: [] }
 }
 
+/** "YYYY-MM" — hangi aylar sunucudan çekildi, tekrar çekmemek için. */
+function monthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`
+}
+
 interface PlanStore {
   plans: Record<string, DailyPlan>
   hydrated: boolean
+  loadedMonths: Set<string>
+  /** Verilen ay/yıl (+backlog) planlarını çekip mevcut plans'e merge eder; zaten yüklüyse no-op. */
+  loadMonth: (year: number, month: number) => Promise<void>
   getPlan: (date: string) => DailyPlan
   addToPlan: (date: string, itemId: string) => void
   removeFromPlan: (date: string, itemId: string) => void
@@ -32,6 +40,29 @@ export const usePlanStore = create<PlanStore>((set, get) => {
   return {
     plans: {},
     hydrated: false,
+    loadedMonths: new Set<string>(),
+
+    async loadMonth(year, month) {
+      const key = monthKey(year, month)
+      if (get().loadedMonths.has(key)) return
+      // Aynı ayın eşzamanlı ikinci isteğini engellemek için önce işaretle
+      set(s => ({ loadedMonths: new Set(s.loadedMonths).add(key) }))
+      const res = await api.fetchPlans(year, month)
+      if (res.success) {
+        // Merge — mevcut ayları koru, gelen ayın (ve backlog'un) kayıtlarını üzerine yaz
+        set(s => ({
+          plans: { ...s.plans, ...Object.fromEntries(res.data.map(p => [p.date, p])) },
+          hydrated: true,
+        }))
+      } else {
+        // Başarısızsa işareti geri al ki sonra tekrar denensin; yine de app'i aç
+        set(s => {
+          const next = new Set(s.loadedMonths)
+          next.delete(key)
+          return { loadedMonths: next, hydrated: true }
+        })
+      }
+    },
 
     getPlan(date) {
       return get().plans[date] ?? emptyPlan(date)
@@ -92,10 +123,7 @@ export const usePlanStore = create<PlanStore>((set, get) => {
   }
 })
 
-// Açılışta sunucudan yükle — liste yanıtı client'ta tarihe göre indekslenir
-void api.fetchPlans().then(res => {
-  usePlanStore.setState({
-    plans: res.success ? Object.fromEntries(res.data.map(p => [p.date, p])) : {},
-    hydrated: true,
-  })
-})
+// Açılışta yalnızca içinde bulunulan ayı (+backlog) çek; diğer aylar PlanView'da
+// takvim gezinirken lazy yüklenir (loadMonth). month 1–12.
+const now = new Date()
+void usePlanStore.getState().loadMonth(now.getFullYear(), now.getMonth() + 1)

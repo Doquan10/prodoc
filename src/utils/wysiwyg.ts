@@ -188,7 +188,10 @@ function inlineMd(node: Node): string {
     case 'SPAN':
       if (el.classList.contains('ce-color')) {
         const t = inner()
-        return t ? `{${el.getAttribute('data-color') || 'mavi'}|${t}}` : ''
+        // Renk inline'dır: içerik boşsa ya da satır sonu (blok kırığı) içeriyorsa sarma.
+        // Aksi halde {renk|…} tek satıra sığmaz, parser eşleştiremez ve ham parantez sızar.
+        if (!t.trim() || t.includes('\n')) return t
+        return `{${el.getAttribute('data-color') || 'mavi'}|${t}}`
       }
       return inner()
     default:

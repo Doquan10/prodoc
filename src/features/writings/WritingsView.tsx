@@ -5,14 +5,20 @@ import WritingsBrowser from './WritingsBrowser'
 
 export default function WritingsView() {
   const selectedWritingId = useUIStore(s => s.selectedWritingId)
-  const getWriting = useWritingStore(s => s.getWriting)
+  // getWriting yerine doğrudan abone ol: detay (loaded) gelince yeniden render olsun
+  const w = useWritingStore(s => (selectedWritingId ? s.writings.find(x => x.id === selectedWritingId) : undefined))
 
   if (selectedWritingId) {
-    const w = getWriting(selectedWritingId)
     // Yazı → markdown editör; kategori (veya bulunamadı) → klasör görünümü
-    // key: seçim değişince ilgili bileşenin iç state'i sıfırlansın
     if (w?.kind === 'note') {
-      return <WritingEditor key={selectedWritingId} writingId={selectedWritingId} />
+      // key'e loaded'ı da kat: özet → tam gövde geçişinde editör remount olup
+      // içeriğini dolu content'ten yeniden başlatsın (boş taslak gerçek içeriği ezmesin)
+      return (
+        <WritingEditor
+          key={`${selectedWritingId}:${w.loaded ? 'full' : 'lite'}`}
+          writingId={selectedWritingId}
+        />
+      )
     }
     return <WritingsBrowser key={selectedWritingId} parentId={selectedWritingId} />
   }

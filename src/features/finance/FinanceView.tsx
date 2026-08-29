@@ -1,6 +1,6 @@
 import { useFinanceStore, type FinanceTab } from '../../store/useFinanceStore'
+import { useAuthStore } from '../../store/useAuthStore'
 import Button from '../../common/Button'
-import FinanceLogin from './FinanceLogin'
 import FinanceDashboard from './FinanceDashboard'
 import FinanceCredits from './FinanceCredits'
 import FinanceExpenses from './FinanceExpenses'
@@ -12,7 +12,7 @@ const TABS: { id: FinanceTab; label: string }[] = [
 ]
 
 export default function FinanceView() {
-  const auth = useFinanceStore(s => s.auth)
+  const auth = useAuthStore(s => s.auth)
   const tab = useFinanceStore(s => s.tab)
   const setTab = useFinanceStore(s => s.setTab)
   const dashLoading = useFinanceStore(s => s.loading)
@@ -21,11 +21,9 @@ export default function FinanceView() {
   const fetchDashboard = useFinanceStore(s => s.fetchDashboard)
   const fetchCredits = useFinanceStore(s => s.fetchCredits)
   const fetchExpenses = useFinanceStore(s => s.fetchExpenses)
-  const logout = useFinanceStore(s => s.logout)
+  const logout = useAuthStore(s => s.logout)
   const hideAmounts = useFinanceStore(s => s.hideAmounts)
   const toggleHideAmounts = useFinanceStore(s => s.toggleHideAmounts)
-
-  if (!auth) return <FinanceLogin />
 
   const refreshing =
     tab === 'dashboard' ? dashLoading : tab === 'credits' ? creditsLoading : expensesLoading
@@ -40,7 +38,7 @@ export default function FinanceView() {
       <div className="view-header">
         <div>
           <h1 className="view-title">Finans</h1>
-          <p className="view-subtitle">Hoş geldin, {auth.fullname}</p>
+          <p className="view-subtitle">Hoş geldin, {auth?.fullname}</p>
         </div>
         <div className="finance-header-actions">
           <Button

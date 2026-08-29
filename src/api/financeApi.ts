@@ -9,6 +9,7 @@ import type {
   ExpensesData,
   ExpenseFilter,
   NewExpense,
+  EditExpense,
 } from '../types/finance'
 
 // Dev'de vite proxy üzerinden gider (vite.config.ts); prod için VITE_FINANCE_API_URL set edilebilir.
@@ -18,6 +19,7 @@ const JSON_HEADERS = { 'Content-Type': 'application/json' }
 
 // ── Auth köprüsü ─────────────────────────────
 // Store ↔ api arasında döngüsel import olmasın diye store kendini buradan bağlar.
+// Tek auth kaynağı useAuthStore'dur; finance ve PLOS istekleri aynı token'ı kullanır.
 
 interface AuthBridge {
   getToken: () => FinanceToken | null
@@ -31,7 +33,7 @@ let bridge: AuthBridge = {
   onAuthExpired: () => {},
 }
 
-export function bindFinanceAuth(b: AuthBridge) {
+export function bindAuth(b: AuthBridge) {
   bridge = b
 }
 
@@ -85,10 +87,12 @@ async function tryRefresh(refreshToken: string): Promise<FinanceToken | null> {
 interface RequestOptions {
   body?: unknown
   auth?: boolean
-  method?: 'POST' | 'GET' | 'DELETE'
+  method?: 'POST' | 'GET' | 'PUT' | 'DELETE'
 }
 
-async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+// PLOS da artık aynı .NET backend'e gittiği için bu authed request altyapısı
+// (JWT + 401 refresh + ResponseModel çözme) plosApi tarafından da kullanılır.
+export async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { body, auth = true, method = 'POST' } = opts
 
   const doFetch = (accessToken: string | null) =>
@@ -117,6 +121,11 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
       throw new Error('Oturum süresi doldu — lütfen tekrar giriş yap.')
     }
     res = await doFetch(fresh.accessToken)
+  }
+
+  // Kimlik geçerli ama bu işlem için yetki yok — refresh'in faydası olmaz
+  if (res.status === 403) {
+    throw new Error('Bu işlem için yetkiniz yok.')
   }
 
   const json = camelize(await res.json().catch(() => null)) as ResponseModel<T> | null
@@ -163,10 +172,38 @@ export function getExpensesRequest(filter: ExpenseFilter): Promise<ExpensesData>
   return request<ExpensesData>('api/MonthlyExpense/GetUserExpensesDetails', { body: filter })
 }
 
+export function getDashboardExpensesRequest(): Promise<ExpensesData> {
+  // Bugünkü harcamalar — GetUserExpensesDetails ile aynı zarf (totalExpense + expensesDayGroup).
+  // Backend filter body'si bekliyor; bugünün gün/ay/yıl'ı gönderilir.
+  const now = new Date()
+  const filter: ExpenseFilter = {
+    categoryId: null,
+    day: now.getDate(),
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+  }
+  return request<ExpensesData>('api/MonthlyExpense/GetExpenseForDashboard', { body: filter })
+}
+
 export async function addExpenseRequest(payload: NewExpense): Promise<void> {
   // Body: { name, description, amount, categoryId, reduceMyBalance, expenseChannel, expenseDate }
   const ok = await request<boolean>('api/MonthlyExpense/AddExpense', { body: payload })
   if (ok === false) throw new Error('Harcama eklenemedi.')
+}
+
+export async function updateExpenseRequest(payload: EditExpense): Promise<void> {
+  // Body: AddExpense alanları + id. Backend id'den kaydı yükleyip alanları overwrite eder.
+  const ok = await request<boolean>('api/MonthlyExpense/UpdateExpense', { body: payload })
+  if (ok === false) throw new Error('Harcama güncellenemedi.')
+}
+
+export async function deleteExpenseRequest(id: number): Promise<void> {
+  // id hem query hem body olarak gönderilir — [FromQuery] / [FromBody] iki bağlama da çalışsın
+  const ok = await request<boolean>(`api/MonthlyExpense/DeleteExpense?id=${id}`, {
+    method: 'DELETE',
+    body: id,
+  })
+  if (ok === false) throw new Error('Harcama silinemedi.')
 }
 
 export async function payInstallmentRequest(installmentId: number): Promise<void> {

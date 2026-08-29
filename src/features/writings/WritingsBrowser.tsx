@@ -242,7 +242,7 @@ export default function WritingsBrowser({ parentId }: Props) {
                       <span className="writing-folder-title">{c.title.trim() || 'Başlıksız'}</span>
                       <div className="writing-folder-foot">
                         <span className="writing-folder-meta">{parts.join(' · ') || 'boş'}</span>
-                        <span className="writing-folder-date">{formatDate(dayOf(c.updatedAt))}</span>
+                        <span className="writing-folder-date">{formatDate(dayOf(c.updatedAt), true)}</span>
                       </div>
                     </button>
                   )
@@ -259,16 +259,18 @@ export default function WritingsBrowser({ parentId }: Props) {
               <div className="writing-list">
                 {notes.map(w => {
                   const item = w.itemId ? items.find(i => i.id === w.itemId) : undefined
-                  const excerpt = stripMarkdown(w.content).slice(0, 160)
+                  // Özet listede content yok — sunucudan gelen excerpt kullanılır (yoksa content)
+                  const plain = stripMarkdown(w.excerpt ?? w.content ?? '')
+                  const excerpt = plain.slice(0, 160)
                   return (
                     <button key={w.id} className="writing-card" onClick={() => openWriting(w.id)}>
                       <span className="writing-card-glyph">✎</span>
                       <div className="writing-card-body">
                         <div className="writing-card-top">
                           <span className="writing-card-title">{w.title.trim() || 'Başlıksız'}</span>
-                          <span className="writing-card-date">{formatDate(dayOf(w.updatedAt))}</span>
+                          <span className="writing-card-date">{formatDate(dayOf(w.updatedAt), true)}</span>
                         </div>
-                        {excerpt && <p className="writing-card-excerpt">{excerpt}{stripMarkdown(w.content).length > 160 ? '…' : ''}</p>}
+                        {excerpt && <p className="writing-card-excerpt">{excerpt}{plain.length > 160 ? '…' : ''}</p>}
                         {item && (
                           <div className="writing-card-badges">
                             <span className="writing-card-item">◈ {item.question}</span>
@@ -294,10 +296,12 @@ function descendantsOf(parentId: string | null, writings: Writing[]): Writing[] 
   return writings.filter(w => w.id !== parentId && ids.has(w.id))
 }
 
-/** Başlık veya içerikte (markdown temizlenmiş) arama eşleşmesi. */
+/** Başlık veya özette (markdown temizlenmiş) arama eşleşmesi.
+ *  Not: özet listede content olmadığından arama excerpt (ilk ~200 karakter) ile sınırlı;
+ *  tam içerik araması için sunucu tarafı search endpoint'i gerekir. */
 function matches(q: string) {
   return (w: Writing) =>
-    w.title.toLowerCase().includes(q) || stripMarkdown(w.content).toLowerCase().includes(q)
+    w.title.toLowerCase().includes(q) || stripMarkdown(w.excerpt ?? w.content ?? '').toLowerCase().includes(q)
 }
 
 function comparator(sort: SortKey): (a: Writing, b: Writing) => number {

@@ -117,6 +117,12 @@ export interface NewExpense {
   expenseDate: string
 }
 
+/** UpdateExpense body — mevcut harcamayı güncelleme (AddExpense + id).
+ *  NOT: Backend UpdateExpense ViewModel'i farklı alan bekliyorsa buradan hizala. */
+export interface EditExpense extends NewExpense {
+  id: number
+}
+
 /** GetUserExpensesDetails body — null alanlar filtreye dahil edilmez */
 export interface ExpenseFilter {
   categoryId: number | null

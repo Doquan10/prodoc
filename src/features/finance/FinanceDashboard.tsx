@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useFinanceStore } from '../../store/useFinanceStore'
 import Button from '../../common/Button'
-import { money, moneyText, COMPACT } from './finFormat'
-import type { FinanceDashboardData, MonthInstallment } from '../../types/finance'
+import { money, moneyText, COMPACT, avatarColor } from './finFormat'
+import type { CSSProperties } from 'react'
+import type { Expense, FinanceDashboardData, MonthInstallment } from '../../types/finance'
 
 const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 
@@ -177,10 +178,32 @@ function DebtChart({ points, hidden }: { points: GraphPoint[]; hidden: boolean }
   )
 }
 
+function TodayExpenseRow({ e, hidden }: { e: Expense; hidden: boolean }) {
+  const source = e.creditCardName || e.categoryName || '—'
+  return (
+    <div className="fin-row">
+      <span className="fin-avatar" style={{ '--fin-avatar-c': avatarColor(e.categoryId) } as CSSProperties}>
+        {(e.name || '?').charAt(0).toUpperCase()}
+      </span>
+      <div className="fin-row-info">
+        <span className="fin-row-name">{e.name}</span>
+        <span className="fin-row-sub">
+          {source}{e.description ? ` · ${e.description}` : ''}
+        </span>
+      </div>
+      <div className="fin-row-right">
+        <span className="fin-row-amount">{money(e.amount, hidden)}</span>
+      </div>
+    </div>
+  )
+}
+
 function InstallmentRow({ ins, hidden }: { ins: MonthInstallment; hidden: boolean }) {
   return (
     <div className="fin-row">
-      <span className="fin-avatar">{(ins.debtName || '?').charAt(0).toUpperCase()}</span>
+      <span className="fin-avatar" style={{ '--fin-avatar-c': avatarColor(ins.debtName) } as CSSProperties}>
+        {(ins.debtName || '?').charAt(0).toUpperCase()}
+      </span>
       <div className="fin-row-info">
         <span className="fin-row-name">{ins.debtName}</span>
         <span className="fin-row-sub">
@@ -204,17 +227,23 @@ export default function FinanceDashboard() {
   const loading = useFinanceStore(s => s.loading)
   const error = useFinanceStore(s => s.error)
   const fetchDashboard = useFinanceStore(s => s.fetchDashboard)
+  const todayExpenses = useFinanceStore(s => s.todayExpenses)
+  const todayLoading = useFinanceStore(s => s.todayExpensesLoading)
+  const todayError = useFinanceStore(s => s.todayExpensesError)
+  const fetchTodayExpenses = useFinanceStore(s => s.fetchTodayExpenses)
   const hide = useFinanceStore(s => s.hideAmounts)
   const [period, setPeriod] = useState<PeriodId>('all')
 
   useEffect(() => {
     void fetchDashboard()
-  }, [fetchDashboard])
+    void fetchTodayExpenses()
+  }, [fetchDashboard, fetchTodayExpenses])
 
   const allPoints = graphPoints(dashboard?.debtGraph)
   const cfg = PERIODS.find(p => p.id === period)!
   const points = cfg.n === Infinity ? allPoints : allPoints.slice(-cfg.n)
   const installments = dashboard?.monthInstallments ?? []
+  const todayItems = (todayExpenses?.expensesDayGroup ?? []).flatMap(g => g.expenses)
 
   return (
     <>
@@ -255,6 +284,32 @@ export default function FinanceDashboard() {
                 <span className="fin-metric-value">{money(dashboard.nextMonthFee, hide)}</span>
               </div>
             </div>
+          </section>
+
+          {/* Bugünkü harcamalar */}
+          <section className="fin-card">
+            <div className="fin-card-head">
+              <span className="fin-card-title">Bugünkü Harcamalar</span>
+              {todayExpenses && (
+                <span className="fin-count">{money(todayExpenses.totalExpense, hide)}</span>
+              )}
+            </div>
+            {todayError ? (
+              <div className="finance-error-box">
+                {todayError}
+                <Button variant="ghost" onClick={() => void fetchTodayExpenses()}>Tekrar dene</Button>
+              </div>
+            ) : !todayExpenses && todayLoading ? (
+              <div className="fin-skel" style={{ height: 120 }} />
+            ) : todayItems.length === 0 ? (
+              <p className="fin-empty">Bugün henüz harcama yok.</p>
+            ) : (
+              <div className="fin-list">
+                {todayItems.map(e => (
+                  <TodayExpenseRow key={e.id} e={e} hidden={hide} />
+                ))}
+              </div>
+            )}
           </section>
 
           {/* Borç trendi */}

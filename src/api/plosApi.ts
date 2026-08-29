@@ -23,6 +23,7 @@ import type { ResponseModel } from '../types/api'
 import type { CuriosityItem, DailyPlan, FocusSession, Writing, AppSettings } from '../types'
 import type { PomodoroState } from '../store/usePomodoroStore'
 import { migrateFromLocalStorage } from './migrateLocal'
+import { request as backendRequest } from './financeApi'
 
 const BASE = '/api'
 
@@ -59,24 +60,58 @@ const json = (method: string, body: unknown): RequestInit => ({
 
 // ═══ Merak Kuyruğu ═══════════════════════════════════════════
 
-// GET /api/items
-export function fetchItems(): Promise<ResponseModel<CuriosityItem[]>> {
-  return request('/items')
+// GET /finance-api/api/Curiosity/GetAll — kullanıcının tüm meraklarını döner
+// (finance JWT'siyle auth'lu). backendRequest anahtarları camelCase'e indirger.
+export async function fetchItems(): Promise<ResponseModel<CuriosityItem[]>> {
+  try {
+    const data = await backendRequest<CuriosityItem[]>('api/Curiosity/GetAll', { method: 'GET' })
+    return { success: true, message: '', data: data ?? [] }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: [] }
+  }
 }
 
-// POST /api/items — gövde: CuriosityItem (id: client GUID)
-export function createItem(item: CuriosityItem): Promise<ResponseModel<CuriosityItem>> {
-  return request('/items', json('POST', item))
+// POST /finance-api/api/Curiosity/AddCuriosity — gövde: CuriosityItem (id: client GUID)
+// PLOS backend'i finance ile aynı .NET sunucusunda; istek finance JWT'siyle auth'lu
+// gider. Backend ResponseModel<bool> döner; store optimistic olduğu için (void ile
+// çağrılır) yanıt beklenmez, sadece hata durumunu ResponseModel'e sarıp döneriz.
+// NOT: Controller/action adı backend'e göre farklıysa aşağıdaki path'i güncelle.
+export async function createItem(item: CuriosityItem): Promise<ResponseModel<CuriosityItem>> {
+  try {
+    await backendRequest<boolean>('api/Curiosity/Add', { body: item })
+    return { success: true, message: '', data: item }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: item }
+  }
 }
 
-// PUT /api/items/{id} — gövde: değişen alanlar
-export function updateItem(id: string, changes: Partial<CuriosityItem>): Promise<ResponseModel<CuriosityItem>> {
-  return request(`/items/${id}`, json('PUT', changes))
+// POST /finance-api/api/Curiosity/Update — gövde: TAM CuriosityItem (partial değil).
+// Backend kaydı id'den yükleyip tüm alanları overwrite eder; böylece alan temizleme
+// (difficulty/categoryId → null) belirsizliği olmaz. ResponseModel<bool> döner.
+export async function updateItem(item: CuriosityItem): Promise<ResponseModel<CuriosityItem>> {
+  try {
+    await backendRequest<boolean>('api/Curiosity/Update', { body: item })
+    return { success: true, message: '', data: item }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: item }
+  }
 }
 
-// DELETE /api/items/{id} — alt ağaç sunucuda cascade silinir
-export function deleteItem(id: string): Promise<ResponseModel<{ deletedIds: string[] }>> {
-  return request(`/items/${id}`, { method: 'DELETE' })
+// DELETE /finance-api/api/Curiosity/Delete?id={id} — finance JWT'siyle auth'lu.
+// Alt ağaç (child'lar) SUNUCUDA cascade silinmeli; client zaten optimistic olarak
+// tüm alt ağacı kaldırır (collectSubtree). Backend ResponseModel<bool> döner.
+// NOT: Controller/route farklıysa aşağıdaki path'i güncelle.
+export async function deleteItem(id: string): Promise<ResponseModel<boolean>> {
+  try {
+    await backendRequest<boolean>(`api/Curiosity/Delete?id=${id}`, { method: 'DELETE', body: id })
+    return { success: true, message: '', data: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: false }
+  }
 }
 
 // ═══ Odak Seansları ══════════════════════════════════════════
@@ -105,37 +140,105 @@ export function finishSession(session: FocusSession): Promise<ResponseModel<Focu
 
 // ═══ Günlük Planlar ══════════════════════════════════════════
 
-// GET /api/plans
-export function fetchPlans(): Promise<ResponseModel<DailyPlan[]>> {
-  return request('/plans')
+// GET /finance-api/api/Plan/GetMyPlans?year={y}&month={m} — kullanıcının SADECE o ay/yıla ait
+// günlük planları + tarihsiz backlog havuzu (finance JWT'li). month 1–12. Backend Date'i string
+// prefix'le filtreler ("YYYY-MM%") ve "backlog" kaydını her ay yanıtına dahil eder. Böylece
+// kullanıcının 10 yıllık geçmişi tek seferde çekilmez — client görünen ayı lazy yükler ve merge eder.
+// backendRequest anahtarları camelCase'e indirger. NOT: Controller/action adı farklıysa path'i güncelle.
+export async function fetchPlans(year: number, month: number): Promise<ResponseModel<DailyPlan[]>> {
+  try {
+    const data = await backendRequest<DailyPlan[]>(`api/DailyPlan/GetMyPlans?year=${year}&month=${month}`, { method: 'GET' })
+    return { success: true, message: '', data: data ?? [] }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: [] }
+  }
 }
 
-// PUT /api/plans/{date} — plan bütün olarak upsert edilir (parça endpoint yok;
-// itemIds ve mustItems her kayıtta komple gönderilir)
-export function savePlan(plan: DailyPlan): Promise<ResponseModel<DailyPlan>> {
-  return request(`/plans/${plan.date}`, json('PUT', plan))
+// POST /finance-api/api/Plan/SavePlan — plan bütün olarak upsert edilir (parça endpoint yok;
+// itemIds ve mustItems her kayıtta komple gönderilir). Backend tarihe göre upsert eder
+// (aynı date varsa overwrite, yoksa ekle). Store optimistic olduğu için (void ile çağrılır)
+// yanıt beklenmez, sadece hatayı ResponseModel'e sararız. ResponseModel<bool> döner.
+export async function savePlan(plan: DailyPlan): Promise<ResponseModel<DailyPlan>> {
+  try {
+    await backendRequest<boolean>('api/DailyPlan/SavePlan', { body: plan })
+    return { success: true, message: '', data: plan }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: plan }
+  }
 }
 
 // ═══ Yazılar ═════════════════════════════════════════════════
 
-// GET /api/writings
-export function fetchWritings(): Promise<ResponseModel<Writing[]>> {
-  return request('/writings')
+// GET /finance-api/api/Writing/GetMyWritings — kullanıcının yazıları, ÖZET olarak
+// (finance JWT'li). content YOK; kart için kırpılmış `excerpt` ve `hasDocuments` gelir.
+// Tam gövde (content + documents) yazı açılınca ayrı bir detay endpoint'inden lazy
+// çekilecek (backend'de henüz yok — o gelene dek editör content'i kaydetmez).
+export async function fetchWritings(): Promise<ResponseModel<Writing[]>> {
+  try {
+    const data = await backendRequest<Writing[]>('api/Writing/GetMyWritings', { method: 'GET' })
+    return { success: true, message: '', data: data ?? [] }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: [] }
+  }
 }
 
-// POST /api/writings — gövde: Writing (id: client GUID)
-export function createWriting(writing: Writing): Promise<ResponseModel<Writing>> {
-  return request('/writings', json('POST', writing))
+// GET /finance-api/api/Writing/GetById?id={id} — tek yazının TAM gövdesi (content + documents),
+// finance JWT'li. Liste özet döndüğü için yazı açılınca bununla lazy yüklenir; dönen kayıt
+// store'da loaded:true ile patch'lenir. Bulunamazsa success:false.
+export async function fetchWriting(id: string): Promise<ResponseModel<Writing>> {
+  try {
+    const data = await backendRequest<Writing>(`api/Writing/GetById?id=${id}`, { method: 'GET' })
+    return { success: true, message: '', data }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: null as unknown as Writing }
+  }
 }
 
-// PUT /api/writings/{id} — gövde: değişen alanlar
-export function updateWriting(id: string, changes: Partial<Writing>): Promise<ResponseModel<Writing>> {
-  return request(`/writings/${id}`, json('PUT', changes))
+// POST /finance-api/api/Writing/Add — gövde: Writing (id: client GUID), finance JWT'li.
+// Backend ResponseModel<bool> döner; store optimistic, başarısızsa geri alır + bildirir.
+// NOT: Controller/action adı farklıysa aşağıdaki path'i güncelle.
+export async function createWriting(writing: Writing): Promise<ResponseModel<Writing>> {
+  try {
+    await backendRequest<boolean>('api/Writing/Add', { body: writing })
+    return { success: true, message: '', data: writing }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: writing }
+  }
 }
 
-// DELETE /api/writings/{id} — alt sayfa ağacı sunucuda cascade silinir
-export function deleteWriting(id: string): Promise<ResponseModel<{ deletedIds: string[] }>> {
-  return request(`/writings/${id}`, { method: 'DELETE' })
+// PUT /finance-api/api/Writing/Update — gövde: { id, ...değişen alanlar }, finance JWT'li.
+// KISMİ güncelleme (PUT fiili ama partial semantik): backend YALNIZCA gövdede gelen alanları
+// günceller. Bu yüzden özet (loaded:false) yazılarda content/documents hiç gönderilmez →
+// gerçek içerik ezilmez. Backend ResponseModel<bool> döner; store optimistic (void ile çağırır).
+// UYARI: undefined alanlar JSON'da yer almaz — icon'u 'temizleme' partial ile iletilemez
+// (temizleme gerekirse gövdeye açıkça icon: null koyacak ayrı bir imza gerekir).
+export async function updateWriting(id: string, changes: Partial<Writing>): Promise<ResponseModel<Writing>> {
+  const body = { id, ...changes }
+  try {
+    await backendRequest<boolean>('api/Writing/Update', { body, method: 'PUT' })
+    return { success: true, message: '', data: body as Writing }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: body as Writing }
+  }
+}
+
+// DELETE /finance-api/api/Writing/Delete?id={id} — finance JWT'li. Alt sayfa ağacı (child'lar)
+// SUNUCUDA cascade silinmeli; client zaten optimistic olarak tüm alt ağacı kaldırır
+// (collectSubtree). Backend ResponseModel<bool> döner. NOT: Controller/route farklıysa güncelle.
+export async function deleteWriting(id: string): Promise<ResponseModel<boolean>> {
+  try {
+    await backendRequest<boolean>(`api/Writing/Delete?id=${id}`, { method: 'DELETE', body: id })
+    return { success: true, message: '', data: true }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return { success: false, message: msg, errors: [msg], data: false }
+  }
 }
 
 // ═══ Pomodoro ════════════════════════════════════════════════

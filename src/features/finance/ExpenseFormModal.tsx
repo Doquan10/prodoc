@@ -4,7 +4,7 @@ import Modal from '../../common/Modal'
 import Input from '../../common/Input'
 import Button from '../../common/Button'
 import { todayStr } from '../../utils/format'
-import type { NewExpense } from '../../types/finance'
+import type { NewExpense, Expense } from '../../types/finance'
 
 // expenseChannel enum'u backend'de tanımlı — varsayılan eşleme (gerekirse düzelt)
 const CHANNELS = [
@@ -20,17 +20,43 @@ function toIso(dateStr: string): string {
   return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds()).toISOString()
 }
 
-export default function ExpenseFormModal({ onClose }: { onClose: () => void }) {
+/** ISO tarihi <input type="date"> için "YYYY-MM-DD"ye indirger. */
+function toDateInput(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? todayStr() : iso.slice(0, 10)
+}
+
+/** Add-mode ön-doldurma — hızlı ekle chip'i ya da takvimde bir güne ekle. */
+export interface ExpensePreset {
+  name?: string
+  categoryId?: number
+  amount?: number
+  date?: string
+}
+
+export default function ExpenseFormModal({ onClose, expense, preset }: { onClose: () => void; expense?: Expense; preset?: ExpensePreset }) {
+  const isEdit = !!expense
   const categories = useFinanceStore(s => s.categories)
   const adding = useFinanceStore(s => s.addingExpense)
+  const updating = useFinanceStore(s => s.updatingExpense)
   const addExpense = useFinanceStore(s => s.addExpense)
+  const updateExpense = useFinanceStore(s => s.updateExpense)
   const filter = useFinanceStore(s => s.expenseFilter)
 
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
-  const [categoryId, setCategoryId] = useState<number | ''>(filter.categoryId ?? '')
-  const [date, setDate] = useState(todayStr())
-  const [description, setDescription] = useState('')
+  const busy = adding || updating
+
+  const [name, setName] = useState(expense?.name ?? preset?.name ?? '')
+  const [amount, setAmount] = useState(
+    expense ? String(expense.amount) : preset?.amount != null ? String(preset.amount) : '',
+  )
+  const [categoryId, setCategoryId] = useState<number | ''>(
+    expense?.categoryId ?? preset?.categoryId ?? filter.categoryId ?? '',
+  )
+  const [date, setDate] = useState(
+    expense ? toDateInput(expense.expenseDate) : preset?.date ?? todayStr(),
+  )
+  const [description, setDescription] = useState(expense?.description ?? '')
+  // expenseChannel / reduceMyBalance ExpenseViewModel'de yok — düzenlemede varsayılandan başlar
   const [channel, setChannel] = useState(1)
   const [reduceMyBalance, setReduceMyBalance] = useState(false)
   const [touched, setTouched] = useState(false)
@@ -40,7 +66,7 @@ export default function ExpenseFormModal({ onClose }: { onClose: () => void }) {
 
   const submit = async () => {
     setTouched(true)
-    if (!valid || adding) return
+    if (!valid || busy) return
     const payload: NewExpense = {
       name: name.trim(),
       description: description.trim() || null,
@@ -50,11 +76,14 @@ export default function ExpenseFormModal({ onClose }: { onClose: () => void }) {
       expenseChannel: channel,
       expenseDate: toIso(date),
     }
-    if (await addExpense(payload)) onClose()
+    const ok = isEdit
+      ? await updateExpense({ ...payload, id: expense!.id })
+      : await addExpense(payload)
+    if (ok) onClose()
   }
 
   return (
-    <Modal title="Harcama Ekle" onClose={onClose}>
+    <Modal title={isEdit ? 'Harcama Düzenle' : 'Harcama Ekle'} onClose={onClose}>
       <div className="fin-expense-form">
         <Input
           label="Başlık"
@@ -136,9 +165,11 @@ export default function ExpenseFormModal({ onClose }: { onClose: () => void }) {
         </label>
 
         <div className="fin-form-actions">
-          <Button variant="ghost" onClick={onClose} disabled={adding}>Vazgeç</Button>
-          <Button onClick={() => void submit()} disabled={adding || (touched && !valid)}>
-            {adding ? 'Ekleniyor…' : 'Ekle'}
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Vazgeç</Button>
+          <Button onClick={() => void submit()} disabled={busy || (touched && !valid)}>
+            {busy
+              ? (isEdit ? 'Kaydediliyor…' : 'Ekleniyor…')
+              : (isEdit ? 'Kaydet' : 'Ekle')}
           </Button>
         </div>
       </div>

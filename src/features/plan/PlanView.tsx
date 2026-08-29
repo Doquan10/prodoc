@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { useQueueStore } from '../../store/useQueueStore'
 import { usePlanStore } from '../../store/usePlanStore'
 import { useToastStore } from '../../store/useToastStore'
@@ -32,6 +32,7 @@ export default function PlanView() {
   const inlineNoteRef = useRef('')
   const inlineNoteTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const plans = usePlanStore(s => s.plans)
+  const loadMonth = usePlanStore(s => s.loadMonth)
   const { getPlan, addToPlan, removeFromPlan, addMust, removeMust, toggleMust, moveMust } = usePlanStore()
   const showToast = useToastStore(s => s.show)
 
@@ -52,6 +53,11 @@ export default function PlanView() {
   const year = viewD.getFullYear()
   const month0 = viewD.getMonth()
   const grid = monthGrid(year, month0)
+
+  // Görünen ay değişince o ayın planlarını lazy çek (store zaten yüklüyse no-op)
+  useEffect(() => {
+    void loadMonth(year, month0 + 1)
+  }, [year, month0, loadMonth])
 
   function planCount(dateStr: string): number {
     const p = plans[dateStr]

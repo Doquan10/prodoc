@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Difficulty, ItemStatus } from '../../types'
+import type { CuriosityItem, Difficulty, ItemStatus } from '../../types'
 import { useQueueStore } from '../../store/useQueueStore'
+import { useToastStore } from '../../store/useToastStore'
 import { useSessionStore } from '../../store/useSessionStore'
 import { usePlanStore } from '../../store/usePlanStore'
 import { useUIStore } from '../../store/useUIStore'
@@ -39,9 +40,19 @@ export default function ItemDetail({ itemId }: Props) {
   const notesRef = useRef(notes)
   const notesTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
+  // Bu modal oturumundaki tüm güncellemeleri izle — kapanınca (unmount) tek özet
+  // bildirim göster: hepsi başarılıysa "Güncellendi", biri bile patladıysa "Güncellenemedi".
+  const pendingUpdates = useRef<Promise<boolean>[]>([])
+  const dirtyRef = useRef(false)
+
+  function edit(changes: Partial<CuriosityItem>) {
+    dirtyRef.current = true
+    pendingUpdates.current.push(updateItem(itemId, changes))
+  }
+
   function commitNotes(value: string) {
     if (value === (useQueueStore.getState().getItem(itemId)?.notes ?? '')) return
-    updateItem(itemId, { notes: value })
+    edit({ notes: value })
   }
 
   function handleNotesChange(value: string) {
@@ -65,7 +76,19 @@ export default function ItemDetail({ itemId }: Props) {
     clearTimeout(notesTimer.current)
     const latest = notesRef.current
     if (latest !== (useQueueStore.getState().getItem(itemId)?.notes ?? '')) {
-      updateItem(itemId, { notes: latest })
+      dirtyRef.current = true
+      pendingUpdates.current.push(updateItem(itemId, { notes: latest }))
+    }
+    // Modal kapandı — bu oturumda değişiklik yapıldıysa özet bildirim
+    if (dirtyRef.current) {
+      const updates = pendingUpdates.current
+      void Promise.all(updates).then(results => {
+        const ok = results.every(Boolean)
+        useToastStore.getState().show(
+          ok ? 'Güncellendi ✅' : 'Güncellenemedi',
+          ok ? 'success' : 'error',
+        )
+      })
     }
   }, [itemId, updateItem])
 
@@ -83,8 +106,8 @@ export default function ItemDetail({ itemId }: Props) {
   }
 
   function saveQuestion() {
-    if (!draftQuestion.trim()) return
-    updateItem(itemId, { question: draftQuestion })
+    const q = draftQuestion.trim()
+    if (q && q !== item?.question) edit({ question: q })
     setEditing(false)
   }
 
@@ -95,7 +118,7 @@ export default function ItemDetail({ itemId }: Props) {
 
   function setDuration(d: number) {
     setSessionMinutes(d)
-    updateItem(itemId, { estimatedMinutes: d })
+    edit({ estimatedMinutes: d })
   }
 
   function startFocus() {
@@ -143,22 +166,24 @@ export default function ItemDetail({ itemId }: Props) {
         <div className="item-detail-body">
           {/* Question */}
           {editing ? (
-            <>
-              <textarea
-                className="input item-detail-question-edit"
-                value={draftQuestion}
-                onChange={e => setDraftQuestion(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveQuestion() }}
-                rows={3}
-                autoFocus
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn-ghost" onClick={cancelEdit}>İptal</button>
-                <button className="btn btn-primary" onClick={saveQuestion}>Kaydet</button>
-              </div>
-            </>
+            <textarea
+              className="input item-detail-question-edit"
+              value={draftQuestion}
+              onChange={e => setDraftQuestion(e.target.value)}
+              onBlur={saveQuestion}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveQuestion() }
+                if (e.key === 'Escape') cancelEdit()
+              }}
+              rows={3}
+              autoFocus
+            />
           ) : (
-            <h2 className="item-detail-question" onDoubleClick={() => { setDraftQuestion(item.question); setEditing(true) }}>
+            <h2
+              className="item-detail-question"
+              style={{ cursor: 'text' }}
+              onClick={() => { setDraftQuestion(item.question); setEditing(true) }}
+            >
               {item.question}
             </h2>
           )}
@@ -168,7 +193,7 @@ export default function ItemDetail({ itemId }: Props) {
             <select
               className="select-sm"
               value={item.status}
-              onChange={e => updateItem(itemId, { status: e.target.value as ItemStatus })}
+              onChange={e => edit({ status: e.target.value as ItemStatus })}
             >
               {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -176,7 +201,7 @@ export default function ItemDetail({ itemId }: Props) {
             <select
               className="select-sm"
               value={item.difficulty ?? ''}
-              onChange={e => updateItem(itemId, { difficulty: e.target.value as Difficulty || undefined })}
+              onChange={e => edit({ difficulty: e.target.value as Difficulty || undefined })}
             >
               <option value="">Zorluk</option>
               {DIFFICULTIES.map(d => <option key={d} value={d}>{difficultyLabel(d)}</option>)}
@@ -187,7 +212,7 @@ export default function ItemDetail({ itemId }: Props) {
               value={item.estimatedMinutes ?? ''}
               onChange={e => {
                 const mins = e.target.value ? parseInt(e.target.value) : undefined
-                updateItem(itemId, { estimatedMinutes: mins })
+                edit({ estimatedMinutes: mins })
                 setSessionMinutes(mins ?? 25)
               }}
             >
@@ -203,7 +228,7 @@ export default function ItemDetail({ itemId }: Props) {
               className="select-sm"
               style={{ width: '100%' }}
               value={item.categoryId ?? ''}
-              onChange={e => updateItem(itemId, { categoryId: e.target.value || undefined })}
+              onChange={e => edit({ categoryId: e.target.value || undefined })}
             >
               <option value="">{categories.length ? 'Kategorisiz' : 'Henüz kategori yok — Yazılarım’dan oluştur'}</option>
               {categories.map(c => <option key={c.id} value={c.id}>{c.path}</option>)}
@@ -219,7 +244,7 @@ export default function ItemDetail({ itemId }: Props) {
                   {t}
                   <button
                     className="tag-chip-remove"
-                    onClick={() => updateItem(itemId, { tags: item.tags.filter(x => x !== t) })}
+                    onClick={() => edit({ tags: item.tags.filter(x => x !== t) })}
                   >×</button>
                 </span>
               ))}
@@ -231,7 +256,7 @@ export default function ItemDetail({ itemId }: Props) {
                 onKeyDown={e => {
                   if (e.key === 'Enter' && tagInput.trim()) {
                     const t = tagInput.trim()
-                    if (!item.tags.includes(t)) updateItem(itemId, { tags: [...item.tags, t] })
+                    if (!item.tags.includes(t)) edit({ tags: [...item.tags, t] })
                     setTagInput('')
                   }
                 }}
@@ -262,7 +287,7 @@ export default function ItemDetail({ itemId }: Props) {
                   // Bir konu tek bir güne planlanır — başka güne taşınıyorsa eski günün planından çıkar
                   if (item.scheduledDate && item.scheduledDate !== scheduleDate) removeFromPlan(item.scheduledDate, itemId)
                   addToPlan(scheduleDate, itemId)
-                  updateItem(itemId, { status: 'scheduled', scheduledDate: scheduleDate })
+                  edit({ status: 'scheduled', scheduledDate: scheduleDate })
                 }}>
                   + Plana Ekle
                 </button>
@@ -277,7 +302,7 @@ export default function ItemDetail({ itemId }: Props) {
                   <button
                     key={p}
                     className={`priority-btn ${(item.priority ?? 3) >= p ? 'active' : ''}`}
-                    onClick={() => updateItem(itemId, { priority: p })}
+                    onClick={() => edit({ priority: p })}
                   >
                     ★
                   </button>

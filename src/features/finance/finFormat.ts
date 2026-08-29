@@ -33,3 +33,17 @@ export function moneyText(s: string | null | undefined, hidden: boolean): string
   const v = parseAmount(s)
   return v !== null ? TRY_EXACT.format(v) : s
 }
+
+// Avatar renk paleti — kategori/kaynak adına göre deterministik seçilir.
+const AVATAR_COLORS = [
+  '#4d78f5', '#2ea043', '#c9922a', '#d0417e',
+  '#8b5cf6', '#0ea5b7', '#e0663a', '#5b8def',
+]
+
+/** Bir string'i palet içinden sabit bir renge eşler (aynı kategori → hep aynı renk). */
+export function avatarColor(key: string | number | null | undefined): string {
+  const s = String(key ?? '')
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return AVATAR_COLORS[h % AVATAR_COLORS.length]
+}

@@ -2,6 +2,11 @@ import { create } from 'zustand'
 import type { Writing, WritingKind } from '../types'
 import { collectSubtree } from '../utils/tree'
 import * as api from '../api/plosApi'
+import { useToastStore } from './useToastStore'
+import { useAuthStore } from './useAuthStore'
+
+/** Detay çağrısı uçuşta olan yazı id'leri — aynı yazı için mükerrer istek atmamak için. */
+const loadingIds = new Set<string>()
 
 /** Eski kayıtlarda kind yoktu: alt öğesi olan → kategori, olmayan → yazı. */
 function normalizeKind(list: Writing[]): Writing[] {
@@ -15,6 +20,8 @@ interface WritingStore {
   addWriting: (opts?: { title?: string; itemId?: string; content?: string; parentId?: string; kind?: WritingKind }) => string
   updateWriting: (id: string, changes: Partial<Pick<Writing, 'title' | 'content' | 'itemId' | 'parentId' | 'icon' | 'documents'>>) => void
   deleteWriting: (id: string) => void
+  /** Yazının tam gövdesini (content + documents) sunucudan çekip loaded:true ile patch'ler. */
+  loadWriting: (id: string) => void
   getWriting: (id: string) => Writing | undefined
   getByItem: (itemId: string) => Writing[]
   getChildren: (parentId?: string) => Writing[]
@@ -36,11 +43,18 @@ export const useWritingStore = create<WritingStore>((set, get) => ({
       kind: opts.kind ?? 'note',
       title: opts.title ?? '',
       content: opts.content ?? '',
+      loaded: true, // yeni yazı client'ta tam oluşturuldu — content güvenle kaydedilir
       createdAt: now,
       updatedAt: now,
     }
     set(s => ({ writings: [writing, ...s.writings] }))
-    void api.createWriting(writing)
+    // Optimistic: backend başarısızsa geri al + bildir
+    void api.createWriting(writing).then(res => {
+      if (!res.success) {
+        set(s => ({ writings: s.writings.filter(w => w.id !== writing.id) }))
+        useToastStore.getState().show(res.message || 'Yazı eklenemedi', 'error')
+      }
+    })
     return writing.id
   },
 
@@ -52,11 +66,35 @@ export const useWritingStore = create<WritingStore>((set, get) => ({
 
   deleteWriting(id) {
     // Optimistic cascade: alt sayfa ağacı da düşer — sunucu aynı kuralı uygular
-    set(s => {
-      const doomed = collectSubtree(id, s.writings)
-      return { writings: s.writings.filter(w => !doomed.has(w.id)) }
+    const prev = get().writings
+    const doomed = collectSubtree(id, prev)
+    set({ writings: prev.filter(w => !doomed.has(w.id)) })
+    // Başarısızsa kaldırılan ağacı geri koy + bildir
+    void api.deleteWriting(id).then(res => {
+      if (!res.success) {
+        set(s => {
+          const have = new Set(s.writings.map(w => w.id))
+          const restored = prev.filter(w => doomed.has(w.id) && !have.has(w.id))
+          return { writings: [...restored, ...s.writings] }
+        })
+        useToastStore.getState().show(res.message || 'Yazı silinemedi', 'error')
+      }
     })
-    void api.deleteWriting(id)
+  },
+
+  loadWriting(id) {
+    const w = get().writings.find(x => x.id === id)
+    // Zaten tam yüklü ya da istek uçuşta → tekrar çekme
+    if (!w || w.loaded || loadingIds.has(id)) return
+    loadingIds.add(id)
+    void api.fetchWriting(id).then(res => {
+      loadingIds.delete(id)
+      if (res.success && res.data) {
+        set(s => ({ writings: s.writings.map(x => (x.id === id ? { ...x, ...res.data, loaded: true } : x)) }))
+      } else {
+        useToastStore.getState().show(res.message || 'Yazı içeriği yüklenemedi', 'error')
+      }
+    })
   },
 
   getWriting(id) {
@@ -92,7 +130,26 @@ export const useWritingStore = create<WritingStore>((set, get) => ({
   },
 }))
 
-// Açılışta sunucudan yükle
-void api.fetchWritings().then(res => {
-  useWritingStore.setState({ writings: res.success ? normalizeKind(res.data) : [], hydrated: true })
+// Yazılar da finance JWT'siyle gerçek backend'den geliyor — token hazır OLMADAN
+// fetch edilmemeli (yoksa GetMyWritings'e auth gitmez, boş döner ve yenileyene dek
+// öyle kalır). Açılışta token varsa hemen yükle; login sonrası token gelince yeniden.
+// GetMyWritings ÖZET döner (content yok) → loaded:false; tam gövde yazı açılınca lazy gelir.
+function hydrateWritings() {
+  void api.fetchWritings().then(res => {
+    const list = res.success ? normalizeKind(res.data).map(w => ({ ...w, loaded: false })) : []
+    useWritingStore.setState({ writings: list, hydrated: true })
+  })
+}
+
+if (useAuthStore.getState().auth) {
+  hydrateWritings()
+} else {
+  // Login yoksa app yükleme kapısında takılmasın — boş liste ile hydrate say
+  useWritingStore.setState({ hydrated: true })
+}
+
+// Login gerçekleşince (token null → dolu) yazıları çek; çıkışta listeyi boşalt
+useAuthStore.subscribe((s, prev) => {
+  if (s.auth && !prev.auth) hydrateWritings()
+  else if (!s.auth && prev.auth) useWritingStore.setState({ writings: [] })
 })
